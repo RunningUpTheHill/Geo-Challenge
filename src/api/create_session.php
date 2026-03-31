@@ -7,12 +7,17 @@ if (strlen($name) < 2 || strlen($name) > 32) {
     json_response(['error' => 'Player name must be 2–32 characters'], 400);
 }
 
+$num_questions = (int) ($body['num_questions'] ?? QUESTIONS_PER_GAME);
+if ($num_questions < 5 || $num_questions > 20) {
+    $num_questions = QUESTIONS_PER_GAME;
+}
+
 $pdo  = get_pdo();
 $code = generate_session_code();
 
 $pdo->beginTransaction();
 try {
-    $pdo->prepare('INSERT INTO sessions (code) VALUES (?)')->execute([$code]);
+    $pdo->prepare('INSERT INTO sessions (code, num_questions) VALUES (?, ?)')->execute([$code, $num_questions]);
     $session_id = (int) $pdo->lastInsertId();
 
     $pdo->prepare('INSERT INTO players (session_id, name) VALUES (?, ?)')->execute([$session_id, $name]);

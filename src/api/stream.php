@@ -133,7 +133,7 @@ function auto_advance_if_timeout(PDO $pdo, array $session): void {
     $current = (int) $session['current_q_index'];
     $next    = $current + 1;
 
-    if ($next >= QUESTIONS_PER_GAME) {
+    if ($next >= (int) $session['num_questions']) {
         $pdo->prepare(
             "UPDATE sessions SET status = 'finished', finished_at = NOW()
              WHERE id = ? AND current_q_index = ? AND status = 'in_progress'"

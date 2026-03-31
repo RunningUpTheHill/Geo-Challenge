@@ -53,6 +53,7 @@ if ($session['status'] === 'in_progress') {
 json_response([
     'status'          => $session['status'],
     'current_q_index' => (int) $session['current_q_index'],
+    'num_questions'   => (int) $session['num_questions'],
     'host_player_id'  => $session['host_player_id'] !== null ? (int) $session['host_player_id'] : null,
     'player_count'    => count($players),
     'players'         => $players,

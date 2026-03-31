@@ -15,7 +15,9 @@ if ($session['status'] !== 'waiting') {
     json_response(['error' => 'Game has already started'], 409);
 }
 
-// Pick 2 questions per category (14 total), shuffle, take 10
+$num_questions = (int) $session['num_questions'];
+
+// Pick 2 questions per category (14 total), shuffle, take num_questions
 $categories = ['capitals','flags','languages','currency','geography','government','alliances'];
 $question_ids = [];
 
@@ -28,10 +30,10 @@ foreach ($categories as $cat) {
 }
 
 shuffle($question_ids);
-$question_ids = array_slice(array_unique($question_ids), 0, QUESTIONS_PER_GAME);
+$question_ids = array_slice(array_unique($question_ids), 0, $num_questions);
 
-// Fill up to 10 if we still don't have enough
-$needed = QUESTIONS_PER_GAME - count($question_ids);
+// Fill up if we still don't have enough
+$needed = $num_questions - count($question_ids);
 if ($needed > 0) {
     if (count($question_ids) > 0) {
         $placeholders = implode(',', array_fill(0, count($question_ids), '?'));

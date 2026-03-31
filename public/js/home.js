@@ -28,10 +28,11 @@ async function createGame() {
     btn.textContent = 'Creating…';
 
     try {
+        const numQuestions = parseInt(document.getElementById('create-questions').value, 10);
         const res  = await fetch('/api/session/create', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ player_name: name }),
+            body:    JSON.stringify({ player_name: name, num_questions: numQuestions }),
         });
         const data = await res.json();
 

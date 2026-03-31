@@ -13,6 +13,9 @@ let answered         = false;
 let score            = 0;
 let statusPollTimer  = null;
 let playerCount      = 0;
+let numQuestions     = 10;
+let lastPlayers      = [];
+let pendingQuestion  = null;
 
 const questionBox    = document.getElementById('question-box');
 const optionsGrid    = document.getElementById('options-grid');
@@ -53,6 +56,7 @@ function renderMiniScoreboard(players) {
     if (!Array.isArray(players) || players.length === 0) return;
 
     playerCount = players.length;
+    lastPlayers = players;
     miniScoreboard.classList.remove('hidden');
     miniScoreList.innerHTML = players.map(p =>
         `<li><span class="ms-name">${escapeHtml(p.name)}</span><span class="ms-score">${p.score}</span></li>`
@@ -61,6 +65,12 @@ function renderMiniScoreboard(players) {
 
 function applyGameState(data) {
     playerCount = typeof data.player_count === 'number' ? data.player_count : playerCount;
+    if (typeof data.num_questions === 'number') numQuestions = data.num_questions;
+
+    // Show end game button if this player is the host
+    if (data.host_player_id === playerId && data.status === 'in_progress') {
+        endGameBtn.classList.remove('hidden');
+    }
 
     if (data.status === 'finished') {
         es.close();
@@ -79,15 +89,20 @@ function applyGameState(data) {
 // ── Question rendering ───────────────────────────────────────────────
 
 function renderQuestion(data) {
+    doRenderQuestion(data);
+}
+
+function doRenderQuestion(data) {
     currentQuestion   = data;
     answered          = false;
     restoreStatusPolling();
 
     document.getElementById('question-counter').textContent =
-        `Question ${data.index + 1} of 10`;
+        `Question ${data.index + 1} of ${numQuestions}`;
     document.getElementById('category-badge').textContent = capitalize(data.category);
 
     questionBox.innerHTML = `<p class="question-text">${escapeHtml(data.text)}</p>`;
+    questionBox.classList.remove('hidden');
 
     optionsGrid.innerHTML = data.options.map((opt, i) =>
         `<button class="option-btn" data-index="${i}">
@@ -245,6 +260,24 @@ function restoreStatusPolling() {
         }
     }, 1000);
 }
+
+// ── End game (host only) ─────────────────────────────────────────────
+
+const endGameBtn = document.getElementById('end-game-btn');
+
+endGameBtn.addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to end the game for everyone?')) return;
+    endGameBtn.disabled = true;
+    try {
+        await fetch('/api/session/end', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ player_id: playerId, session_code: code }),
+        });
+    } catch (e) {
+        endGameBtn.disabled = false;
+    }
+});
 
 // ── SSE ──────────────────────────────────────────────────────────────
 

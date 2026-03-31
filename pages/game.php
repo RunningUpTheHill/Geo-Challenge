@@ -39,12 +39,15 @@
                 <span>Waiting for other players&hellip;</span>
             </div>
         </div>
+
     </main>
 
     <aside id="mini-scoreboard" class="mini-scoreboard hidden">
         <h3>Live Scores</h3>
         <ul id="mini-score-list"></ul>
     </aside>
+
+    <button id="end-game-btn" class="btn btn-end-game hidden">End Game</button>
 
     <script src="/public/js/game.js"></script>
 </body>

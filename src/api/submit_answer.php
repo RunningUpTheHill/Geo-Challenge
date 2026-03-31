@@ -87,7 +87,7 @@ json_response([
 function advance_question(PDO $pdo, array $session, int $current_index): void {
     $next = $current_index + 1;
 
-    if ($next >= QUESTIONS_PER_GAME) {
+    if ($next >= (int) $session['num_questions']) {
         // End the game — optimistic update prevents race conditions
         $pdo->prepare(
             "UPDATE sessions SET status = 'finished', finished_at = NOW()

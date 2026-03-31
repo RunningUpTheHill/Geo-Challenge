@@ -52,6 +52,9 @@ if ($method === 'POST' && $uri === 'api/session/start') {
 if ($method === 'POST' && $uri === 'api/answer/submit') {
     require __DIR__ . '/src/api/submit_answer.php'; exit;
 }
+if ($method === 'POST' && $uri === 'api/session/end') {
+    require __DIR__ . '/src/api/end_game.php'; exit;
+}
 if ($method === 'GET' && match_route('api/session/{code}/status', $uri, $route_params)) {
     require __DIR__ . '/src/api/session_status.php'; exit;
 }

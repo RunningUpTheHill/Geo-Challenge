@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     id                  INT UNSIGNED    NOT NULL AUTO_INCREMENT PRIMARY KEY,
     code                CHAR(6)         NOT NULL UNIQUE,
     host_player_id      INT UNSIGNED    NULL,
+    num_questions       TINYINT UNSIGNED NOT NULL DEFAULT 10,
     status              ENUM('waiting','in_progress','finished') NOT NULL DEFAULT 'waiting',
     current_q_index     TINYINT UNSIGNED NOT NULL DEFAULT 0,
     question_started_at DATETIME        NULL,

@@ -21,6 +21,15 @@
                 <label for="create-name">Your Name</label>
                 <input type="text" id="create-name" placeholder="Enter your name" maxlength="32" autocomplete="off">
             </div>
+            <div class="form-group">
+                <label for="create-questions">Number of Questions</label>
+                <select id="create-questions">
+                    <option value="5">5</option>
+                    <option value="10" selected>10</option>
+                    <option value="15">15</option>
+                    <option value="20">20</option>
+                </select>
+            </div>
             <button id="create-btn" class="btn btn-primary btn-block">Create Game</button>
             <div id="create-error" class="error-msg" aria-live="polite"></div>
         </div>
