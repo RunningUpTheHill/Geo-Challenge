@@ -1,9 +1,2 @@
-Options -Indexes
-RewriteEngine On
-
-# Serve real files and directories directly (CSS, JS, images)
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-
-# Everything else goes through the front controller
-RewriteRule ^ index.php [QSA,L]
+AddHandler cgi-script .php
+DirectoryIndex index.php index.html index.htm

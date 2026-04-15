@@ -1,61 +1,63 @@
 <?php
+require_once dirname(__DIR__, 2) . '/bootstrap.php';
+
 require_method('GET');
 
-$code    = $route_params['code'] ?? '';
-$session = get_session_by_code($code);
-$pdo     = get_pdo();
+$code = normalize_session_code_value((string) ($_GET['code'] ?? ''));
+$active = require_player_auth_for_api($code, $_GET['player_token'] ?? null);
+$pdo = get_pdo();
+$session = sync_session_runtime_state($pdo, get_session_by_code($code));
 
-$stmt = $pdo->prepare(
-    'SELECT id, name, score, total_time_ms, finished_at
-     FROM players
-     WHERE session_id = ?
-     ORDER BY score DESC, total_time_ms ASC'
-);
-$stmt->execute([$session['id']]);
-$rows = $stmt->fetchAll();
-
-$players = [];
-foreach ($rows as $i => $p) {
-    $players[] = [
-        'rank'          => $i + 1,
-        'id'            => (int) $p['id'],
-        'name'          => $p['name'],
-        'score'         => (int) $p['score'],
-        'total_time_ms' => (int) $p['total_time_ms'],
-        'finished_at'   => $p['finished_at'],
-    ];
-}
+$host_player_id = $session['host_player_id'] !== null ? (int) $session['host_player_id'] : 0;
+$viewer_player_id = (int) $active['player_id'];
+$viewer_is_host = !empty($active['is_host']) || $host_player_id === $viewer_player_id;
+$players = fetch_session_players($pdo, (int) $session['id'], $host_player_id, $viewer_player_id);
+$player_count = count($players);
+$phase_elapsed_ms = 0;
 
 $current_question = null;
-if ($session['status'] === 'in_progress') {
-    $q_stmt = $pdo->prepare(
-        'SELECT q.id, q.question_text, q.category, q.options
-         FROM session_questions sq
-         JOIN questions q ON q.id = sq.question_id
-         WHERE sq.session_id = ? AND sq.position = ?'
-    );
-    $q_stmt->execute([$session['id'], (int) $session['current_q_index']]);
-    $q = $q_stmt->fetch();
+$answered_count = 0;
+$leaderboard = null;
 
-    if ($q) {
-        $current_question = [
-            'index'       => (int) $session['current_q_index'],
-            'id'          => (int) $q['id'],
-            'text'        => $q['question_text'],
-            'category'    => $q['category'],
-            'options'     => json_decode($q['options'], true),
-            'time_limit'  => QUESTION_DURATION_SEC,
-            'server_time' => microtime(true),
-        ];
+if ($session['status'] === 'in_progress') {
+    $phase_elapsed_ms = phase_elapsed_ms($pdo, (int) $session['id']);
+
+    if (($session['round_phase'] ?? '') === 'question') {
+        $question_row = fetch_session_question_row($pdo, (int) $session['id'], (int) $session['current_q_index']);
+        if ($question_row) {
+            $current_question = format_question_payload(
+                $question_row,
+                (int) $session['current_q_index'],
+                question_elapsed_ms($pdo, (int) $session['id'])
+            );
+            $answered_count = count_answers_for_question($pdo, (int) $session['id'], (int) $question_row['id']);
+        }
+    }
+
+    if (($session['round_phase'] ?? '') === 'leaderboard') {
+        $leaderboard = $players;
     }
 }
 
+if ($session['status'] === 'finished') {
+    $leaderboard = $players;
+}
+
 json_response([
-    'status'          => $session['status'],
+    'status' => $session['status'],
+    'round_phase' => $session['round_phase'] ?? 'lobby',
     'current_q_index' => (int) $session['current_q_index'],
-    'num_questions'   => (int) $session['num_questions'],
-    'host_player_id'  => $session['host_player_id'] !== null ? (int) $session['host_player_id'] : null,
-    'player_count'    => count($players),
-    'players'         => $players,
-    'current_question'=> $current_question,
+    'num_questions' => (int) $session['num_questions'],
+    'question_duration' => QUESTION_DURATION_SEC,
+    'leaderboard_duration' => LEADERBOARD_PHASE_SEC,
+    'ready_duration' => READY_PHASE_SEC,
+    'phase_elapsed_ms' => $phase_elapsed_ms,
+    'host_player_id' => $host_player_id > 0 ? $host_player_id : null,
+    'viewer_player_id' => $viewer_player_id,
+    'viewer_is_host' => $viewer_is_host,
+    'player_count' => $player_count,
+    'answered_count' => $answered_count,
+    'players' => $players,
+    'leaderboard' => $leaderboard,
+    'current_question' => $current_question,
 ]);

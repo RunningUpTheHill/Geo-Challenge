@@ -1,14 +1,16 @@
 <?php
+require_once dirname(__DIR__, 2) . '/bootstrap.php';
+
 require_method('POST');
 $body = require_json_body();
 
-$code      = strtoupper(trim($body['session_code'] ?? ''));
-$player_id = (int) ($body['player_id'] ?? 0);
+$code = normalize_session_code_value((string) ($body['session_code'] ?? ''));
+$active = require_player_auth_for_api($code, $body['player_token'] ?? null);
 
 $pdo     = get_pdo();
 $session = get_session_by_code($code);
 
-if ((int) $session['host_player_id'] !== $player_id) {
+if ((int) $session['host_player_id'] !== (int) $active['player_id']) {
     json_response(['error' => 'Only the host can start the game'], 403);
 }
 if ($session['status'] !== 'waiting') {
@@ -59,7 +61,12 @@ try {
 
     $pdo->prepare(
         "UPDATE sessions
-         SET status = 'in_progress', started_at = NOW(), question_started_at = NOW(), current_q_index = 0
+         SET status = 'in_progress',
+             round_phase = 'ready',
+             started_at = NOW(),
+             phase_started_at = NOW(),
+             question_started_at = NULL,
+             current_q_index = 0
          WHERE id = ?"
     )->execute([$session['id']]);
 

@@ -1,157 +1,180 @@
-const code      = window.location.pathname.split('/').pop();
-const playerId  = parseInt(sessionStorage.getItem('gc_player_id'), 10);
-const myName    = sessionStorage.getItem('gc_player_name') || '';
-let isHost      = false;
-let hasNavigatedToGame = false;
-let startFallbackTimer = null;
+const lobbyApp = window.GEO_CHALLENGE || {};
+const lobbyAuth = window.GEO_PLAYER_AUTH.requireSession(lobbyApp.sessionCode, lobbyApp.urls.home);
 
-document.getElementById('session-code').textContent = code;
-const hostControls = document.getElementById('host-controls');
-const waitingMsg   = document.getElementById('waiting-msg');
-const statusMsg    = document.getElementById('status-msg');
-const startBtn     = document.getElementById('start-btn');
-const hasValidPlayerId = Number.isInteger(playerId) && playerId > 0;
+if (!lobbyAuth) {
+    throw new Error('Missing player session.');
+}
 
-function escapeHtml(str) {
-    return String(str)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+let lobbyIsHost = false;
+let lobbyNavigatedToGame = false;
+let lobbyFallbackTimer = null;
+
+const $hostControls = $('#host-controls');
+const $waitingMsg = $('#waiting-msg');
+const $statusMsg = $('#status-msg');
+const $startBtn = $('#start-btn');
+const sessionCode = lobbyApp.sessionCode || '';
+const playerId = Number(lobbyAuth.playerId || 0);
+const statusUrl = window.GEO_PLAYER_AUTH.withPlayerToken(lobbyApp.statusUrl, lobbyAuth.playerToken);
+const streamUrl = window.GEO_PLAYER_AUTH.withPlayerToken(lobbyApp.streamUrl, lobbyAuth.playerToken);
+
+function lobbyEscapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function setLobbyStatus(message, type = 'warning') {
+    $statusMsg
+        .removeClass('d-none alert-warning alert-danger alert-info alert-success')
+        .addClass(`alert-${type}`)
+        .text(message || '');
+
+    if (!message) {
+        $statusMsg.addClass('d-none');
+    }
 }
 
 function setHostState(nextIsHost) {
-    isHost = nextIsHost;
-    hostControls.classList.toggle('hidden', !isHost);
-    waitingMsg.classList.toggle('hidden', isHost);
+    lobbyIsHost = Boolean(nextIsHost);
+    $hostControls.toggleClass('hidden', !lobbyIsHost);
+    $waitingMsg.toggleClass('hidden', lobbyIsHost);
 }
 
 function goToGame() {
-    if (hasNavigatedToGame) return;
-    hasNavigatedToGame = true;
-    clearInterval(startFallbackTimer);
-    es.close();
-    window.location.href = '/game/' + code;
-}
-
-async function fetchStatus() {
-    const res = await fetch(`/api/session/${code}/status`, { cache: 'no-store' });
-    if (!res.ok) {
-        throw new Error('Failed to load session status');
+    if (lobbyNavigatedToGame) {
+        return;
     }
-    return res.json();
+
+    lobbyNavigatedToGame = true;
+    window.clearInterval(lobbyFallbackTimer);
+    lobbyStream.close();
+    window.location.href = lobbyApp.gameUrl;
 }
 
-function startGameFallbackPolling() {
-    clearInterval(startFallbackTimer);
-    startFallbackTimer = setInterval(async () => {
-        if (hasNavigatedToGame) return;
+function fetchLobbyStatus() {
+    return $.getJSON(statusUrl);
+}
 
-        try {
-            const data = await fetchStatus();
+function handleLobbyAuthFailure(xhr) {
+    return window.GEO_PLAYER_AUTH.handleAuthFailure(xhr, sessionCode, lobbyApp.urls.home);
+}
+
+function startLobbyFallbackPolling() {
+    window.clearInterval(lobbyFallbackTimer);
+    lobbyFallbackTimer = window.setInterval(() => {
+        if (lobbyNavigatedToGame) {
+            return;
+        }
+
+        fetchLobbyStatus().done((data) => {
+            setHostState(data.viewer_is_host);
+
             if (data.status === 'in_progress') {
                 goToGame();
             } else if (data.status === 'finished') {
-                clearInterval(startFallbackTimer);
-                window.location.href = '/results/' + code;
+                window.clearInterval(lobbyFallbackTimer);
+                window.location.href = lobbyApp.resultsUrl;
             }
-        } catch (err) {
-            // Keep polling until SSE or status confirms the transition.
-        }
+        }).fail((xhr) => {
+            handleLobbyAuthFailure(xhr);
+        });
     }, 750);
 }
 
 function renderPlayers(players) {
-    const list  = document.getElementById('player-list');
-    const badge = document.getElementById('player-count');
-    badge.textContent = players.length;
+    $('#player-count').text(players.length);
 
-    list.innerHTML = players.map(p => {
-        const isYou = (p.id && p.id === playerId) || p.name === myName;
-        return `<li class="player-item">
-            <span class="player-avatar">${escapeHtml(p.name.charAt(0).toUpperCase())}</span>
-            <span class="player-name">${escapeHtml(p.name)}</span>
-            ${isYou ? '<span class="you-badge">You</span>' : ''}
-        </li>`;
+    const markup = players.map((player) => {
+        const isYou = Number(player.id) === playerId;
+        return `
+            <li class="list-group-item player-item">
+                <span class="player-avatar">${lobbyEscapeHtml(player.name.charAt(0).toUpperCase())}</span>
+                <span class="player-name">${lobbyEscapeHtml(player.name)}</span>
+                ${player.is_host ? '<span class="you-badge host-badge">Host</span>' : ''}
+                ${isYou ? '<span class="you-badge">You</span>' : ''}
+            </li>
+        `;
     }).join('');
+
+    $('#player-list').html(markup);
 }
 
-if (!hasValidPlayerId) {
-    window.location.replace('/');
-    throw new Error('Missing player session');
-}
+const lobbyStream = new EventSource(streamUrl);
 
-// ── SSE connection ───────────────────────────────────────────────────
-const es = new EventSource(`/api/stream/${code}/${playerId}`);
+fetchLobbyStatus().done((data) => {
+    setHostState(data.viewer_is_host);
+    if (data.status === 'in_progress') {
+        goToGame();
+    } else if (data.status === 'finished') {
+        lobbyStream.close();
+        window.location.href = lobbyApp.resultsUrl;
+    } else {
+        renderPlayers(data.players);
+    }
+}).fail((xhr) => {
+    if (handleLobbyAuthFailure(xhr)) {
+        return;
+    }
 
-// Hydrate player list on page load
-fetchStatus()
-    .then(data => {
-        setHostState(data.host_player_id === playerId);
-        if (data.status === 'in_progress') {
-            goToGame();
-        } else if (data.status === 'finished') {
-            es.close();
-            window.location.href = '/results/' + code;
-        } else {
-            renderPlayers(data.players);
-        }
-    })
-    .catch(() => {
-        statusMsg.textContent = 'Could not load the latest session state.';
-    });
-
-es.addEventListener('lobby_update', e => {
-    const data = JSON.parse(e.data);
-    setHostState(data.host_player_id === playerId);
-    renderPlayers(data.players);
-    statusMsg.textContent = '';
+    setLobbyStatus('Could not load the latest session state.', 'danger');
 });
 
-es.addEventListener('game_start', () => {
+lobbyStream.addEventListener('lobby_update', (event) => {
+    const data = JSON.parse(event.data);
+    setHostState(data.viewer_is_host);
+    renderPlayers(data.players);
+    setLobbyStatus('');
+});
+
+lobbyStream.addEventListener('game_start', () => {
     goToGame();
 });
 
-es.onerror = () => {
-    if (!hasNavigatedToGame) {
-        statusMsg.textContent = 'Connection issue - reconnecting...';
+lobbyStream.onerror = () => {
+    if (!lobbyNavigatedToGame) {
+        setLobbyStatus('Connection issue. Reconnecting...', 'warning');
     }
 };
 
-// ── Copy code button ─────────────────────────────────────────────────
-document.getElementById('copy-btn').addEventListener('click', () => {
-    navigator.clipboard.writeText(code).then(() => {
-        const btn = document.getElementById('copy-btn');
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = 'Copy', 2000);
+$('#copy-btn').on('click', () => {
+    navigator.clipboard.writeText(sessionCode).then(() => {
+        const originalText = $('#copy-btn').text();
+        $('#copy-btn').text('Copied!');
+        window.setTimeout(() => {
+            $('#copy-btn').text(originalText);
+        }, 1800);
     });
 });
 
-// ── Start game button (host only) ────────────────────────────────────
-if (startBtn) {
-    startBtn.addEventListener('click', async () => {
-        startBtn.disabled    = true;
-        startBtn.textContent = 'Starting...';
+$startBtn.on('click', () => {
+    $startBtn.prop('disabled', true).text('Starting...');
 
-        try {
-            const res  = await fetch('/api/session/start', {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ session_code: code, player_id: playerId }),
-            });
-            const data = await res.json();
-
-            if (!res.ok) {
-                statusMsg.textContent = data.error || 'Could not start game.';
-                startBtn.disabled    = false;
-                startBtn.textContent = 'Start Game';
-                return;
-            }
-
-            statusMsg.textContent = 'Starting game...';
-            goToGame();
-        } catch (e) {
-            statusMsg.textContent = 'Network error.';
-            startBtn.disabled    = false;
-            startBtn.textContent = 'Start Game';
+    $.ajax({
+        url: lobbyApp.urls.sessionStart,
+        method: 'POST',
+        contentType: 'application/json',
+        dataType: 'json',
+        data: JSON.stringify({
+            session_code: sessionCode,
+            player_token: lobbyAuth.playerToken,
+        }),
+    }).done(() => {
+        setLobbyStatus('Starting game...', 'info');
+        goToGame();
+    }).fail((xhr) => {
+        if (handleLobbyAuthFailure(xhr)) {
+            return;
         }
+
+        const message = xhr.responseJSON && xhr.responseJSON.error
+            ? xhr.responseJSON.error
+            : 'Could not start game.';
+        setLobbyStatus(message, 'danger');
+        $startBtn.prop('disabled', false).text('Start Game');
     });
-}
+});
+
+startLobbyFallbackPolling();

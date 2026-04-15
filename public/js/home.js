@@ -1,111 +1,122 @@
-function escapeHtml(str) {
-    return String(str)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const homeApp = window.GEO_CHALLENGE || {};
+
+function homeRoute(path) {
+    return `${homeApp.basePath || ''}/${String(path).replace(/^\/+/, '')}`;
 }
 
-function persistPlayerSession(data, name) {
-    sessionStorage.setItem('gc_player_id', String(data.player_id));
-    sessionStorage.setItem('gc_player_name', name);
-
-    localStorage.removeItem('gc_player_id');
-    localStorage.removeItem('gc_player_name');
-    localStorage.removeItem('gc_is_host');
+function persistPlayerAuth(data) {
+    return window.GEO_PLAYER_AUTH.saveSession({
+        code: data.code,
+        playerId: data.player_id,
+        playerName: data.player_name,
+        playerToken: data.player_token,
+    });
 }
 
-async function createGame() {
-    const name   = document.getElementById('create-name').value.trim();
-    const errEl  = document.getElementById('create-error');
-    errEl.textContent = '';
+function toggleInlineAlert($element, message) {
+    $element.text(message || '');
+    $element.toggleClass('d-none', !message);
+}
 
+function setButtonState($button, text, disabled) {
+    $button.text(text);
+    $button.prop('disabled', disabled);
+}
+
+function submitCreateGame() {
+    const $error = $('#create-error');
+    const $button = $('#create-btn');
+    const name = $('#create-name').val().trim();
+    const numQuestions = parseInt($('#create-questions').val(), 10);
+
+    toggleInlineAlert($error, '');
     if (name.length < 2) {
-        errEl.textContent = 'Name must be at least 2 characters.';
+        toggleInlineAlert($error, 'Name must be at least 2 characters.');
         return;
     }
 
-    const btn = document.getElementById('create-btn');
-    btn.disabled = true;
-    btn.textContent = 'Creating…';
+    setButtonState($button, 'Creating...', true);
 
-    try {
-        const numQuestions = parseInt(document.getElementById('create-questions').value, 10);
-        const res  = await fetch('/api/session/create', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ player_name: name, num_questions: numQuestions }),
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-            errEl.textContent = data.error || 'Error creating game.';
-            btn.disabled = false;
-            btn.textContent = 'Create Game';
+    $.ajax({
+        url: homeApp.urls.sessionCreate,
+        method: 'POST',
+        contentType: 'application/json',
+        dataType: 'json',
+        data: JSON.stringify({
+            player_name: name,
+            num_questions: numQuestions,
+        }),
+    }).done((data) => {
+        const playerSession = persistPlayerAuth(data);
+        if (!playerSession) {
+            toggleInlineAlert($error, 'Could not save your player session. Please try again.');
+            setButtonState($button, 'Create Game', false);
             return;
         }
-
-        persistPlayerSession(data, name);
-        window.location.href = '/lobby/' + data.code;
-
-    } catch (e) {
-        errEl.textContent = 'Network error — please try again.';
-        btn.disabled = false;
-        btn.textContent = 'Create Game';
-    }
+        window.location.href = homeRoute(`lobby.php?code=${encodeURIComponent(data.code)}`);
+    }).fail((xhr) => {
+        const message = xhr.responseJSON && xhr.responseJSON.error
+            ? xhr.responseJSON.error
+            : 'Network error - please try again.';
+        toggleInlineAlert($error, message);
+        setButtonState($button, 'Create Game', false);
+    });
 }
 
-async function joinGame() {
-    const name   = document.getElementById('join-name').value.trim();
-    const code   = document.getElementById('join-code').value.trim().toUpperCase();
-    const errEl  = document.getElementById('join-error');
-    errEl.textContent = '';
+function submitJoinGame() {
+    const $error = $('#join-error');
+    const $button = $('#join-btn');
+    const name = $('#join-name').val().trim();
+    const code = $('#join-code').val().trim().toUpperCase();
 
-    if (name.length < 2) { errEl.textContent = 'Name must be at least 2 characters.'; return; }
-    if (code.length !== 6) { errEl.textContent = 'Code must be exactly 6 characters.'; return; }
+    toggleInlineAlert($error, '');
+    if (name.length < 2) {
+        toggleInlineAlert($error, 'Name must be at least 2 characters.');
+        return;
+    }
+    if (code.length !== 6) {
+        toggleInlineAlert($error, 'Code must be exactly 6 characters.');
+        return;
+    }
 
-    const btn = document.getElementById('join-btn');
-    btn.disabled = true;
-    btn.textContent = 'Joining…';
+    setButtonState($button, 'Joining...', true);
 
-    try {
-        const res  = await fetch('/api/session/join', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ player_name: name, code }),
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-            errEl.textContent = data.error || 'Error joining game.';
-            btn.disabled = false;
-            btn.textContent = 'Join Game';
+    $.ajax({
+        url: homeApp.urls.sessionJoin,
+        method: 'POST',
+        contentType: 'application/json',
+        dataType: 'json',
+        data: JSON.stringify({
+            player_name: name,
+            code,
+        }),
+    }).done((data) => {
+        const playerSession = persistPlayerAuth(data);
+        if (!playerSession) {
+            toggleInlineAlert($error, 'Could not save your player session. Please try again.');
+            setButtonState($button, 'Join Game', false);
             return;
         }
-
-        persistPlayerSession(data, name);
-        window.location.href = '/lobby/' + data.code;
-
-    } catch (e) {
-        errEl.textContent = 'Network error — please try again.';
-        btn.disabled = false;
-        btn.textContent = 'Join Game';
-    }
+        window.location.href = homeRoute(`lobby.php?code=${encodeURIComponent(data.code)}`);
+    }).fail((xhr) => {
+        const message = xhr.responseJSON && xhr.responseJSON.error
+            ? xhr.responseJSON.error
+            : 'Network error - please try again.';
+        toggleInlineAlert($error, message);
+        setButtonState($button, 'Join Game', false);
+    });
 }
 
-document.getElementById('create-btn').addEventListener('click', createGame);
-document.getElementById('join-btn').addEventListener('click', joinGame);
-
-// Enter key support
-document.getElementById('create-name').addEventListener('keydown', e => {
-    if (e.key === 'Enter') createGame();
-});
-document.getElementById('join-code').addEventListener('keydown', e => {
-    if (e.key === 'Enter') joinGame();
-});
-document.getElementById('join-name').addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('join-code').focus();
+$('#create-form').on('submit', (event) => {
+    event.preventDefault();
+    submitCreateGame();
 });
 
-// Force uppercase on code input
-document.getElementById('join-code').addEventListener('input', function () {
-    this.value = this.value.toUpperCase();
+$('#join-form').on('submit', (event) => {
+    event.preventDefault();
+    submitJoinGame();
+});
+
+$('#join-code').on('input', function onCodeInput() {
+    $(this).val($(this).val().toUpperCase());
 });

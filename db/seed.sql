@@ -1,3 +1,4 @@
+-- This must match the database selected in db/schema.sql and db_config.php.
 USE geo_challenge;
 
 INSERT INTO questions (category, difficulty, question_text, options, correct_index) VALUES

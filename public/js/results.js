@@ -1,78 +1,85 @@
-const code = window.location.pathname.split('/').pop();
+const resultsApp = window.GEO_CHALLENGE || {};
+const resultsAuth = window.GEO_PLAYER_AUTH.requireSession(resultsApp.sessionCode, resultsApp.urls.home);
 
-function escapeHtml(str) {
-    return String(str)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+if (!resultsAuth) {
+    throw new Error('Missing player session.');
+}
+
+let totalQuestions = 0;
+const resultsApiUrl = window.GEO_PLAYER_AUTH.withPlayerToken(resultsApp.resultsApiUrl, resultsAuth.playerToken);
+
+function resultsEscapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 function formatTime(ms) {
-    if (!ms) return '—';
-    return (ms / 1000).toFixed(1) + 's';
+    if (!ms) {
+        return '-';
+    }
+
+    return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function renderPodium(leaderboard) {
-    const podium = document.getElementById('podium');
-    const top3   = leaderboard.slice(0, 3);
+function renderPodium(players) {
+    const topThree = players.slice(0, 3);
+    const $podium = $('#podium');
 
-    if (top3.length === 0) {
-        podium.innerHTML = '<p class="no-players">No players found.</p>';
+    if (topThree.length === 0) {
+        $podium.html('<p class="text-center subtle-copy mb-0">No players found.</p>');
         return;
     }
 
-    // Display order: 2nd (left), 1st (centre/tallest), 3rd (right)
-    const displayOrder = [top3[1], top3[0], top3[2]].filter(Boolean);
-    const medals  = top3[1] ? ['🥈', '🥇', '🥉'] : ['🥇', '🥉'];
-    const heights = top3[1] ? ['110px', '155px', '80px'] : ['155px', '80px'];
+    const displayOrder = [topThree[1], topThree[0], topThree[2]].filter(Boolean);
+    const medals = topThree[1] ? ['🥈', '🥇', '🥉'] : ['🥇', '🥉'];
+    const heights = topThree[1] ? ['150px', '220px', '120px'] : ['220px', '120px'];
 
-    podium.innerHTML = displayOrder.map((p, i) => `
-        <div class="podium-block" style="height:${heights[i]}">
-            <div class="podium-medal">${medals[i]}</div>
-            <div class="podium-name">${escapeHtml(p.name)}</div>
-            <div class="podium-score">${p.score}/10</div>
+    $podium.html(displayOrder.map((player, index) => `
+        <div class="podium-block ${index === 1 || displayOrder.length === 1 ? 'featured' : ''}" style="height:${heights[index]}">
+            <div class="podium-medal">${medals[index]}</div>
+            <div class="podium-name">${resultsEscapeHtml(player.name)}</div>
+            <div class="podium-score">${player.score} pts</div>
+            <div class="subtle-copy small">${player.correct_answers}/${totalQuestions} correct</div>
         </div>
-    `).join('');
+    `).join(''));
 }
 
-function renderTable(leaderboard) {
-    const tbody = document.getElementById('results-body');
-    tbody.innerHTML = leaderboard.map((p, i) => `
-        <tr class="${i === 0 ? 'winner-row' : ''}">
-            <td class="rank-cell">${p.rank || i + 1}</td>
-            <td>${escapeHtml(p.name)}</td>
-            <td><strong>${p.score}</strong>/10</td>
-            <td>${formatTime(p.total_time_ms)}</td>
+function renderTable(players) {
+    $('#results-body').html(players.map((player, index) => `
+        <tr class="${index === 0 ? 'winner-row' : ''}">
+            <td class="rank-cell">${player.rank || index + 1}</td>
+            <td>${resultsEscapeHtml(player.name)}</td>
+            <td>${player.correct_answers} / ${totalQuestions}</td>
+            <td><strong>${player.score}</strong> pts</td>
+            <td>${formatTime(player.total_time_ms)}</td>
         </tr>
-    `).join('');
+    `).join(''));
 }
 
-async function loadResults() {
-    // Prefer cached leaderboard set by game.js before redirect
-    const cached = sessionStorage.getItem('gc_leaderboard');
-    if (cached) {
-        const leaderboard = JSON.parse(cached);
-        renderPodium(leaderboard);
-        renderTable(leaderboard);
-        return;
-    }
-
-    // Fallback: fetch from API (e.g. direct page load / share link)
-    try {
-        const res  = await fetch(`/api/session/${code}/status`);
-        const data = await res.json();
+function loadResults() {
+    $.getJSON(resultsApiUrl).done((data) => {
+        totalQuestions = data.num_questions;
         renderPodium(data.players);
         renderTable(data.players);
-    } catch (e) {
-        document.getElementById('results-body').innerHTML =
-            '<tr><td colspan="4" class="loading-row">Failed to load results.</td></tr>';
-    }
+    }).fail((xhr) => {
+        if (window.GEO_PLAYER_AUTH.handleAuthFailure(xhr, resultsApp.sessionCode, resultsApp.urls.home)) {
+            return;
+        }
+
+        $('#results-body').html('<tr><td colspan="5" class="loading-row">Failed to load results.</td></tr>');
+    });
 }
 
-document.getElementById('share-btn').addEventListener('click', () => {
+$('#share-btn').on('click', () => {
     navigator.clipboard.writeText(window.location.href).then(() => {
-        const btn = document.getElementById('share-btn');
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = 'Copy Link', 2000);
+        const originalText = $('#share-btn').text();
+        $('#share-btn').text('Copied!');
+        window.setTimeout(() => {
+            $('#share-btn').text(originalText);
+        }, 1800);
     });
 });
 

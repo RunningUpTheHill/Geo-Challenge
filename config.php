@@ -1,9 +1,8 @@
 <?php
-define('DB_HOST', '127.0.0.1');
-define('DB_PORT', PHP_OS_FAMILY === 'Windows' ? '3306' : '8889');
-define('DB_NAME', 'geo_challenge');
-define('DB_USER', 'root');
-define('DB_PASS', 'root');  // MAMP default password
-
 define('QUESTIONS_PER_GAME', 10);
 define('QUESTION_DURATION_SEC', 20);
+define('MAX_PLAYERS_PER_SESSION', 10);
+define('READY_PHASE_SEC', 3);
+define('LEADERBOARD_PHASE_SEC', 5);
+define('MAX_POINTS_PER_QUESTION', 1000);
+define('MIN_POINTS_FOR_CORRECT', 500);

@@ -1,3 +1,4 @@
+-- Update the database name here if you change dbname in db_config.php.
 CREATE DATABASE IF NOT EXISTS geo_challenge CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE geo_challenge;
 
@@ -7,8 +8,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     host_player_id      INT UNSIGNED    NULL,
     num_questions       TINYINT UNSIGNED NOT NULL DEFAULT 10,
     status              ENUM('waiting','in_progress','finished') NOT NULL DEFAULT 'waiting',
+    round_phase         VARCHAR(20)     NOT NULL DEFAULT 'lobby',
     current_q_index     TINYINT UNSIGNED NOT NULL DEFAULT 0,
     question_started_at DATETIME        NULL,
+    phase_started_at    DATETIME        NULL,
     started_at          DATETIME        NULL,
     finished_at         DATETIME        NULL,
     created_at          DATETIME        NOT NULL DEFAULT NOW()
@@ -18,11 +21,13 @@ CREATE TABLE IF NOT EXISTS players (
     id            INT UNSIGNED    NOT NULL AUTO_INCREMENT PRIMARY KEY,
     session_id    INT UNSIGNED    NOT NULL,
     name          VARCHAR(32)     NOT NULL,
-    score         TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    auth_token    CHAR(64)        NOT NULL,
+    score         INT UNSIGNED    NOT NULL DEFAULT 0,
     total_time_ms INT UNSIGNED    NOT NULL DEFAULT 0,
     finished_at   DATETIME        NULL,
     last_seen_at  DATETIME        NOT NULL DEFAULT NOW(),
     created_at    DATETIME        NOT NULL DEFAULT NOW(),
+    UNIQUE KEY uq_players_auth_token (auth_token),
     CONSTRAINT fk_player_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -56,6 +61,7 @@ CREATE TABLE IF NOT EXISTS answers (
     chosen_index TINYINT UNSIGNED NOT NULL,
     is_correct   TINYINT(1)      NOT NULL DEFAULT 0,
     time_ms      INT UNSIGNED    NOT NULL DEFAULT 0,
+    points_awarded INT UNSIGNED  NOT NULL DEFAULT 0,
     submitted_at DATETIME        NOT NULL DEFAULT NOW(),
     UNIQUE KEY uq_player_question (player_id, question_id),
     CONSTRAINT fk_ans_player   FOREIGN KEY (player_id)   REFERENCES players(id)   ON DELETE CASCADE,
