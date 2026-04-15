@@ -3,9 +3,13 @@ $code = strtoupper($route_params['code']);
 $page_state = app_state([
     'page' => 'game',
     'sessionCode' => $code,
+    'gameReadyUrl' => app_url('game_ready.php?code=' . urlencode($code)),
     'statusUrl' => app_url('session_status.php?code=' . urlencode($code)),
     'streamUrl' => app_url('stream.php?code=' . urlencode($code)),
     'resultsUrl' => app_url('results.php?code=' . urlencode($code)),
+    'question_duration' => QUESTION_DURATION_SEC,
+    'leaderboard_duration' => LEADERBOARD_PHASE_SEC,
+    'ready_duration' => READY_PHASE_SEC,
 ]);
 ?>
 <!DOCTYPE html>
@@ -44,13 +48,33 @@ $page_state = app_state([
 
     <main class="container game-layout py-4">
         <div class="row g-4">
-            <div class="col-xl-8">
+            <div class="col-12">
                 <section class="card app-card border-0 shadow-lg question-panel">
                     <div class="card-body p-4 p-lg-5">
                         <div id="question-box" class="question-box">
-                            <div class="pregame-wait">
-                                <div class="spinner-border text-info mb-3" role="status" aria-hidden="true"></div>
-                                <p class="mb-0">Waiting for the game to start&hellip;</p>
+                            <div class="ready-shell">
+                                <div class="ready-visual">
+                                    <div class="sync-loader" aria-hidden="true">
+                                        <span class="sync-loader-ring sync-loader-ring-a"></span>
+                                        <span class="sync-loader-ring sync-loader-ring-b"></span>
+                                        <span class="sync-loader-core"></span>
+                                    </div>
+                                </div>
+                                <div class="ready-copy">
+                                    <span class="ready-status-chip">Syncing players</span>
+                                    <p class="pregame-ready ready-headline mb-2">Get ready!</p>
+                                    <p class="ready-helper subtle-copy mb-0">Waiting for the game to start and sync every player.</p>
+                                </div>
+                                <div class="ready-dashboard">
+                                    <div class="ready-stat-card">
+                                        <span class="ready-stat-label">Players synced</span>
+                                        <strong class="ready-stat-value">0/0</strong>
+                                    </div>
+                                    <div class="ready-stat-card">
+                                        <span class="ready-stat-label">Launch status</span>
+                                        <strong class="ready-stat-value ready-stat-value-small">Preparing room</strong>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -66,15 +90,6 @@ $page_state = app_state([
                         </div>
                     </div>
                 </section>
-            </div>
-
-            <div class="col-xl-4">
-                <aside id="mini-scoreboard" class="card app-card border-0 shadow-lg mini-scoreboard hidden">
-                    <div class="card-body p-4">
-                        <h2 class="h5 mb-3">Live Scores</h2>
-                        <ul id="mini-score-list" class="list-group list-group-flush"></ul>
-                    </div>
-                </aside>
             </div>
         </div>
     </main>

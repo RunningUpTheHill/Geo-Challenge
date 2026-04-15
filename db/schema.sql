@@ -10,11 +10,13 @@ CREATE TABLE IF NOT EXISTS sessions (
     status              ENUM('waiting','in_progress','finished') NOT NULL DEFAULT 'waiting',
     round_phase         VARCHAR(20)     NOT NULL DEFAULT 'lobby',
     current_q_index     TINYINT UNSIGNED NOT NULL DEFAULT 0,
-    question_started_at DATETIME        NULL,
-    phase_started_at    DATETIME        NULL,
-    started_at          DATETIME        NULL,
-    finished_at         DATETIME        NULL,
-    created_at          DATETIME        NOT NULL DEFAULT NOW()
+    question_started_at DATETIME(6)     NULL,
+    phase_started_at    DATETIME(6)     NULL,
+    started_at          DATETIME(6)     NULL,
+    finished_at         DATETIME(6)     NULL,
+    created_at          DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    state_version       BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    state_changed_at    DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS players (
@@ -24,9 +26,10 @@ CREATE TABLE IF NOT EXISTS players (
     auth_token    CHAR(64)        NOT NULL,
     score         INT UNSIGNED    NOT NULL DEFAULT 0,
     total_time_ms INT UNSIGNED    NOT NULL DEFAULT 0,
-    finished_at   DATETIME        NULL,
-    last_seen_at  DATETIME        NOT NULL DEFAULT NOW(),
-    created_at    DATETIME        NOT NULL DEFAULT NOW(),
+    finished_at   DATETIME(6)     NULL,
+    last_seen_at  DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    game_ready_at DATETIME(6)     NULL,
+    created_at    DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     UNIQUE KEY uq_players_auth_token (auth_token),
     CONSTRAINT fk_player_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
@@ -62,8 +65,8 @@ CREATE TABLE IF NOT EXISTS answers (
     is_correct   TINYINT(1)      NOT NULL DEFAULT 0,
     time_ms      INT UNSIGNED    NOT NULL DEFAULT 0,
     points_awarded INT UNSIGNED  NOT NULL DEFAULT 0,
-    submitted_at DATETIME        NOT NULL DEFAULT NOW(),
-    UNIQUE KEY uq_player_question (player_id, question_id),
+    submitted_at DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_player_question (player_id, question_id, session_id),
     CONSTRAINT fk_ans_player   FOREIGN KEY (player_id)   REFERENCES players(id)   ON DELETE CASCADE,
     CONSTRAINT fk_ans_session  FOREIGN KEY (session_id)  REFERENCES sessions(id)  ON DELETE CASCADE,
     CONSTRAINT fk_ans_question FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE

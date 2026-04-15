@@ -26,6 +26,10 @@ if (strlen($code) !== 6) {
     redirect_to('', 303);
 }
 
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 $pdo     = get_pdo();
 $session = get_session_by_code($code);
 
@@ -54,6 +58,7 @@ $player_token = generate_player_token();
 $pdo->prepare('INSERT INTO players (session_id, name, auth_token) VALUES (?, ?, ?)')
     ->execute([$session['id'], $name, $player_token]);
 $player_id = (int) $pdo->lastInsertId();
+bump_session_state_version($pdo, (int) $session['id']);
 
 if ($is_json_request) {
     json_response([

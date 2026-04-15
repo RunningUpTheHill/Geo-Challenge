@@ -5,6 +5,9 @@ require_method('POST');
 $body = require_json_body();
 $code = normalize_session_code_value((string) ($body['session_code'] ?? ''));
 $active = require_player_auth_for_api($code, $body['player_token'] ?? null);
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
 
 $pdo = get_pdo();
 $session = get_session_by_code($code);

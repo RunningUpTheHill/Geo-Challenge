@@ -6,6 +6,10 @@ $body = require_json_body();
 
 $code = normalize_session_code_value((string) ($body['session_code'] ?? ''));
 $active = require_player_auth_for_api($code, $body['player_token'] ?? null);
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 $player_id = (int) $active['player_id'];
 $question_id = (int) ($body['question_id'] ?? 0);
 $raw_chosen_index = $body['chosen_index'] ?? null;
@@ -62,6 +66,8 @@ if ($ins->rowCount() > 0) {
 
     if ($answered_count >= $total_players) {
         set_session_leaderboard_phase($pdo, $session);
+    } else {
+        bump_session_state_version($pdo, (int) $session['id']);
     }
 }
 

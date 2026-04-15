@@ -8,9 +8,23 @@ function get_db_config(): array {
         return $config;
     }
 
-    $config_file = dirname(__DIR__) . '/db_config.php';
-    if (!file_exists($config_file)) {
-        throw new RuntimeException('Database configuration file is missing. Create group/db_config.php before running the app.');
+    $config_candidates = [
+        dirname(__DIR__) . '/db_config.php',
+        dirname(__DIR__, 2) . '/db_config.php',
+    ];
+
+    $config_file = null;
+    foreach ($config_candidates as $candidate) {
+        if (file_exists($candidate)) {
+            $config_file = $candidate;
+            break;
+        }
+    }
+
+    if ($config_file === null) {
+        throw new RuntimeException(
+            'Database configuration file is missing. Create db_config.php in the project root or parent group directory before running the app.'
+        );
     }
 
     $config = require $config_file;
@@ -70,12 +84,61 @@ function ensure_group_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE sessions ADD COLUMN phase_started_at DATETIME NULL AFTER question_started_at");
     }
 
+    $session_datetime_columns = [
+        'question_started_at' => 'NULL',
+        'phase_started_at' => 'NULL',
+        'started_at' => 'NULL',
+        'finished_at' => 'NULL',
+        'created_at' => 'NOT NULL DEFAULT CURRENT_TIMESTAMP(6)',
+    ];
+    foreach ($session_datetime_columns as $column => $definition) {
+        $column_info = group_column_definition($pdo, 'sessions', $column);
+        if ($column_info !== null && stripos((string) ($column_info['Type'] ?? ''), 'datetime(6)') === false) {
+            $pdo->exec("ALTER TABLE sessions MODIFY {$column} DATETIME(6) {$definition}");
+        }
+    }
+
+    if (!group_column_exists($pdo, 'sessions', 'state_version')) {
+        $pdo->exec("ALTER TABLE sessions ADD COLUMN state_version BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER created_at");
+    }
+
+    if (!group_column_exists($pdo, 'sessions', 'state_changed_at')) {
+        $pdo->exec(
+            "ALTER TABLE sessions
+             ADD COLUMN state_changed_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+             AFTER state_version"
+        );
+    }
+
     if (!group_column_exists($pdo, 'answers', 'points_awarded')) {
         $pdo->exec("ALTER TABLE answers ADD COLUMN points_awarded INT UNSIGNED NOT NULL DEFAULT 0 AFTER time_ms");
     }
 
     if (!group_column_exists($pdo, 'players', 'auth_token')) {
         $pdo->exec("ALTER TABLE players ADD COLUMN auth_token CHAR(64) NULL AFTER name");
+    }
+
+    if (!group_column_exists($pdo, 'players', 'game_ready_at')) {
+        $pdo->exec("ALTER TABLE players ADD COLUMN game_ready_at DATETIME NULL AFTER last_seen_at");
+    }
+
+    $player_datetime_columns = [
+        'finished_at' => 'NULL',
+        'last_seen_at' => 'NOT NULL DEFAULT CURRENT_TIMESTAMP(6)',
+        'game_ready_at' => 'NULL',
+        'created_at' => 'NOT NULL DEFAULT CURRENT_TIMESTAMP(6)',
+    ];
+    foreach ($player_datetime_columns as $column => $definition) {
+        $column_info = group_column_definition($pdo, 'players', $column);
+        if ($column_info !== null && stripos((string) ($column_info['Type'] ?? ''), 'datetime(6)') === false) {
+            $pdo->exec("ALTER TABLE players MODIFY {$column} DATETIME(6) {$definition}");
+        }
+    }
+
+    $answer_submitted_column = group_column_definition($pdo, 'answers', 'submitted_at');
+    if ($answer_submitted_column !== null
+        && stripos((string) ($answer_submitted_column['Type'] ?? ''), 'datetime(6)') === false) {
+        $pdo->exec("ALTER TABLE answers MODIFY submitted_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)");
     }
 
     $missing_token_count = (int) $pdo->query(
@@ -103,6 +166,32 @@ function ensure_group_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE players MODIFY score INT UNSIGNED NOT NULL DEFAULT 0");
     }
 
+    // Fix answers unique key to include session_id so answers from different game sessions
+    // for the same question don't collide and cause INSERT IGNORE to silently fail.
+    $needs_key_fix = false;
+    $key_rows = $pdo->query(
+        "SHOW INDEX FROM `answers` WHERE Key_name = 'uq_player_question'"
+    )->fetchAll(PDO::FETCH_ASSOC);
+    if (!empty($key_rows)) {
+        $columns_in_key = array_column($key_rows, 'Column_name');
+        if (!in_array('session_id', $columns_in_key, true)) {
+            $needs_key_fix = true;
+        }
+    }
+    if ($needs_key_fix) {
+        // The old unique key also doubles as the supporting index for fk_ans_player.
+        // Add a dedicated player_id index before dropping it so the migration works on
+        // existing databases without violating the foreign key requirement.
+        if (!group_index_exists($pdo, 'answers', 'idx_answers_player_id')) {
+            $pdo->exec("ALTER TABLE answers ADD KEY idx_answers_player_id (player_id)");
+        }
+        $pdo->exec("ALTER TABLE answers DROP INDEX uq_player_question");
+        $pdo->exec("ALTER TABLE answers ADD UNIQUE KEY uq_player_question (player_id, question_id, session_id)");
+    } elseif (empty($key_rows)) {
+        // Key doesn't exist at all — create it with the correct columns
+        $pdo->exec("ALTER TABLE answers ADD UNIQUE KEY uq_player_question (player_id, question_id, session_id)");
+    }
+
     $pdo->exec(
         "UPDATE sessions
          SET round_phase = CASE
@@ -112,9 +201,30 @@ function ensure_group_schema(PDO $pdo): void {
              WHEN status = 'in_progress' THEN 'question'
              ELSE round_phase
          END
-         WHERE round_phase IS NULL
-            OR round_phase = ''
-            OR (round_phase = 'lobby' AND status <> 'waiting')"
+         WHERE (round_phase IS NULL OR round_phase = '')
+            OR (round_phase = 'lobby' AND status <> 'waiting')
+            OR (round_phase NOT IN ('lobby','ready','question','leaderboard','finished') AND status <> 'finished')"
+    );
+
+    $pdo->exec(
+        "UPDATE sessions s
+         LEFT JOIN (
+             SELECT
+                 session_id,
+                 COUNT(*) AS player_count,
+                 SUM(CASE WHEN game_ready_at IS NOT NULL THEN 1 ELSE 0 END) AS ready_player_count
+             FROM players
+             GROUP BY session_id
+         ) p ON p.session_id = s.id
+         SET s.phase_started_at = NULL,
+             s.state_version = s.state_version + 1,
+             s.state_changed_at = NOW(6)
+         WHERE s.status = 'in_progress'
+           AND s.round_phase = 'ready'
+           AND s.current_q_index = 0
+           AND s.question_started_at IS NULL
+           AND COALESCE(p.ready_player_count, 0) < COALESCE(p.player_count, 0)
+           AND s.phase_started_at IS NOT NULL"
     );
 
     $pdo->exec(
@@ -124,6 +234,25 @@ function ensure_group_schema(PDO $pdo): void {
              question_started_at,
              started_at,
              created_at
+         )
+         WHERE phase_started_at IS NULL
+           AND NOT (
+               status = 'in_progress'
+               AND round_phase = 'ready'
+               AND current_q_index = 0
+               AND question_started_at IS NULL
+           )"
+    );
+
+    $pdo->exec(
+        "UPDATE sessions
+         SET state_changed_at = COALESCE(
+             state_changed_at,
+             phase_started_at,
+             question_started_at,
+             started_at,
+             created_at,
+             NOW(6)
          )"
     );
 

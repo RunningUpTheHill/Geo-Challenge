@@ -5,6 +5,8 @@ if (!lobbyAuth) {
     throw new Error('Missing player session.');
 }
 
+const LOBBY_FALLBACK_POLL_MS = 1000;
+
 let lobbyIsHost = false;
 let lobbyNavigatedToGame = false;
 let lobbyFallbackTimer = null;
@@ -55,7 +57,16 @@ function goToGame() {
 }
 
 function fetchLobbyStatus() {
-    return $.getJSON(statusUrl);
+    return $.ajax({
+        url: statusUrl,
+        method: 'GET',
+        dataType: 'json',
+        cache: false,
+        headers: {
+            'Cache-Control': 'no-cache',
+            Pragma: 'no-cache',
+        },
+    });
 }
 
 function handleLobbyAuthFailure(xhr) {
@@ -77,11 +88,13 @@ function startLobbyFallbackPolling() {
             } else if (data.status === 'finished') {
                 window.clearInterval(lobbyFallbackTimer);
                 window.location.href = lobbyApp.resultsUrl;
+            } else {
+                renderPlayers(data.players || []);
             }
         }).fail((xhr) => {
             handleLobbyAuthFailure(xhr);
         });
-    }, 750);
+    }, LOBBY_FALLBACK_POLL_MS);
 }
 
 function renderPlayers(players) {

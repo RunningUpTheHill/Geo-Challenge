@@ -1,12 +1,16 @@
 <?php
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
 
+const STREAM_LOOP_DELAY_US = 125000;
+const STREAM_PROGRESS_INTERVAL_TICKS = 16;
+const STREAM_KEEPALIVE_INTERVAL_TICKS = 120;
+
+$code = normalize_session_code_value((string) ($_GET['code'] ?? ''));
+$active = require_player_auth_for_api($code, $_GET['player_token'] ?? null);
 if (session_status() === PHP_SESSION_ACTIVE) {
     session_write_close();
 }
 
-$code = normalize_session_code_value((string) ($_GET['code'] ?? ''));
-$active = require_player_auth_for_api($code, $_GET['player_token'] ?? null);
 $player_id = (int) $active['player_id'];
 
 if ($code === '' || $player_id <= 0) {
@@ -57,11 +61,51 @@ function sse_prime(): void {
     flush();
 }
 
+function build_stream_payload(PDO $pdo, array $session, int $player_id, array $active): array {
+    $session_id = (int) $session['id'];
+    $host_player_id = $session['host_player_id'] !== null ? (int) $session['host_player_id'] : 0;
+    $players = fetch_session_players($pdo, $session_id, $host_player_id, $player_id);
+    $server_now_ms = server_now_ms();
+    $phase_started_at_ms = phase_started_at_ms_for_session($session);
+    $phase_elapsed_ms = ($session['status'] ?? '') === 'in_progress'
+        ? phase_elapsed_ms($pdo, $session_id)
+        : 0;
+    $phase_deadline_ms = phase_deadline_ms_from_elapsed($session, $phase_elapsed_ms, $server_now_ms);
+    $payload = [
+        'status' => $session['status'],
+        'round_phase' => $session['round_phase'] ?? 'lobby',
+        'state_version' => (int) ($session['state_version'] ?? 0),
+        'question_duration' => QUESTION_DURATION_SEC,
+        'leaderboard_duration' => LEADERBOARD_PHASE_SEC,
+        'ready_duration' => READY_PHASE_SEC,
+        'current_q_index' => (int) $session['current_q_index'],
+        'server_now_ms' => $server_now_ms,
+        'phase_started_at_ms' => $phase_started_at_ms,
+        'phase_deadline_ms' => $phase_deadline_ms,
+        'phase_elapsed_ms' => $phase_elapsed_ms,
+        'host_player_id' => $host_player_id > 0 ? $host_player_id : null,
+        'viewer_is_host' => !empty($active['is_host']) || $host_player_id === $player_id,
+        'player_count' => count($players),
+        'ready_player_count' => count_ready_players_in_session($pdo, $session_id),
+        'viewer_ready' => is_player_game_ready($pdo, $session_id, $player_id),
+        'ready_countdown_started' => initial_ready_countdown_started($session),
+    ];
+
+    $payload['players'] = $players;
+
+    if (($session['round_phase'] ?? '') === 'leaderboard') {
+        $payload['viewer_round_result'] = build_viewer_round_result($pdo, $session, $player_id);
+    }
+
+    return $payload;
+}
+
 sse_prime();
 
 $last_status = null;
 $last_phase = null;
 $last_question_index = -1;
+$last_state_version = -1;
 $tick = 0;
 
 while (true) {
@@ -69,74 +113,71 @@ while (true) {
         break;
     }
 
-    $session = refresh_session_by_id($pdo, $session_id);
+    $session = refresh_session_stream_state($pdo, $session_id);
     $session = sync_session_runtime_state($pdo, $session);
 
-    $host_player_id = $session['host_player_id'] !== null ? (int) $session['host_player_id'] : 0;
-    $players = fetch_session_players($pdo, $session_id, $host_player_id, $player_id);
-    $payload = [
-        'players' => $players,
-        'host_player_id' => $host_player_id > 0 ? $host_player_id : null,
-        'viewer_is_host' => !empty($active['is_host']) || $host_player_id === $player_id,
-        'current_q_index' => (int) $session['current_q_index'],
-        'phase_elapsed_ms' => phase_elapsed_ms($pdo, $session_id),
-    ];
+    $status = (string) ($session['status'] ?? 'waiting');
+    $phase = (string) ($session['round_phase'] ?? 'lobby');
+    $question_index = (int) ($session['current_q_index'] ?? 0);
+    $state_version = (int) ($session['state_version'] ?? 0);
+    $phase_changed = $status !== $last_status
+        || $phase !== $last_phase
+        || $question_index !== $last_question_index;
+    $state_changed = $state_version !== $last_state_version;
+    $should_emit_progress = $status === 'in_progress'
+        && !$phase_changed
+        && !$state_changed
+        && $tick > 0
+        && $tick % STREAM_PROGRESS_INTERVAL_TICKS === 0;
 
-    if ($session['status'] === 'waiting') {
-        if ($tick % 2 === 0) {
-            sse_emit('lobby_update', $payload);
+    if ($status === 'waiting') {
+        if ($phase_changed || $state_changed) {
+            sse_emit('lobby_update', build_stream_payload($pdo, $session, $player_id, $active));
         }
-    } elseif ($session['status'] === 'in_progress') {
-        if ($last_status !== 'in_progress' || $last_phase !== ($session['round_phase'] ?? '')) {
-            if (($session['round_phase'] ?? '') === 'ready') {
+    } elseif ($status === 'in_progress') {
+        if ($phase_changed) {
+            $payload = build_stream_payload($pdo, $session, $player_id, $active);
+
+            if ($phase === 'ready') {
                 sse_emit('game_start', $payload);
-            } elseif (($session['round_phase'] ?? '') === 'question') {
-                $question = fetch_session_question_row($pdo, $session_id, (int) $session['current_q_index']);
+            } elseif ($phase === 'question') {
+                $question = fetch_session_question_row($pdo, $session_id, $question_index);
                 if ($question) {
                     sse_emit('question', array_merge(
                         $payload,
                         format_question_payload(
                             $question,
-                            (int) $session['current_q_index'],
+                            $question_index,
                             question_elapsed_ms($pdo, $session_id)
                         )
                     ));
-                    $last_question_index = (int) $session['current_q_index'];
                 }
-            } elseif (($session['round_phase'] ?? '') === 'leaderboard') {
+            } elseif ($phase === 'leaderboard') {
                 sse_emit('round_leaderboard', array_merge($payload, [
-                    'leaderboard' => $players,
-                    'question_index' => (int) $session['current_q_index'],
+                    'leaderboard' => $payload['players'],
+                    'question_index' => $question_index,
                 ]));
             }
-        } elseif (($session['round_phase'] ?? '') === 'question' && (int) $session['current_q_index'] > $last_question_index) {
-            $question = fetch_session_question_row($pdo, $session_id, (int) $session['current_q_index']);
-            if ($question) {
-                sse_emit('question', array_merge(
-                    $payload,
-                    format_question_payload(
-                        $question,
-                        (int) $session['current_q_index'],
-                        question_elapsed_ms($pdo, $session_id)
-                    )
-                ));
-                $last_question_index = (int) $session['current_q_index'];
-            }
-        } elseif ($tick % 2 === 0) {
-            sse_emit('player_progress', $payload);
+        } elseif ($state_changed || $should_emit_progress) {
+            sse_emit('player_progress', build_stream_payload($pdo, $session, $player_id, $active));
         }
-    } elseif ($session['status'] === 'finished') {
-        sse_emit('game_end', array_merge($payload, ['leaderboard' => $players]));
+    } elseif ($status === 'finished') {
+        if ($phase_changed || $state_changed) {
+            $payload = build_stream_payload($pdo, $session, $player_id, $active);
+            sse_emit('game_end', array_merge($payload, ['leaderboard' => $payload['players']]));
+        }
         break;
     }
 
-    $last_status = $session['status'];
-    $last_phase = $session['round_phase'] ?? null;
+    $last_status = $status;
+    $last_phase = $phase;
+    $last_question_index = $question_index;
+    $last_state_version = $state_version;
 
-    if ($tick > 0 && $tick % 15 === 0) {
+    if ($tick > 0 && $tick % STREAM_KEEPALIVE_INTERVAL_TICKS === 0) {
         sse_keepalive();
     }
 
     $tick++;
-    sleep(1);
+    usleep(STREAM_LOOP_DELAY_US);
 }

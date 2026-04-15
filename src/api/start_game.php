@@ -6,6 +6,9 @@ $body = require_json_body();
 
 $code = normalize_session_code_value((string) ($body['session_code'] ?? ''));
 $active = require_player_auth_for_api($code, $body['player_token'] ?? null);
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
 
 $pdo     = get_pdo();
 $session = get_session_by_code($code);
@@ -54,6 +57,12 @@ if ($needed > 0) {
 
 $pdo->beginTransaction();
 try {
+    $pdo->prepare(
+        'UPDATE players
+         SET game_ready_at = NULL
+         WHERE session_id = ?'
+    )->execute([$session['id']]);
+
     foreach ($question_ids as $pos => $qid) {
         $pdo->prepare('INSERT INTO session_questions (session_id, question_id, position) VALUES (?, ?, ?)')
             ->execute([$session['id'], $qid, $pos]);
@@ -63,12 +72,13 @@ try {
         "UPDATE sessions
          SET status = 'in_progress',
              round_phase = 'ready',
-             started_at = NOW(),
-             phase_started_at = NOW(),
+             started_at = NOW(6),
+             phase_started_at = NULL,
              question_started_at = NULL,
              current_q_index = 0
          WHERE id = ?"
     )->execute([$session['id']]);
+    bump_session_state_version($pdo, (int) $session['id']);
 
     $pdo->commit();
 } catch (Exception $e) {
