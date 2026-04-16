@@ -25,7 +25,7 @@ $page_state = app_state([
             <div class="text-center mb-4">
                 <div class="eyebrow">Session Complete</div>
                 <h1 class="results-title">Final Results</h1>
-                <p class="subtle-copy mb-0">See who climbed to the top of the leaderboard and who won the speed tiebreaker.</p>
+                <p class="subtle-copy mb-0">Ranked by accuracy &mdash; most correct answers wins. Ties are broken by total response time.</p>
             </div>
 
             <div id="podium" class="podium mb-5"></div>

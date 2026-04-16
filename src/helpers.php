@@ -354,7 +354,7 @@ function bump_session_state_version(PDO $pdo, int $session_id): void
 function fetch_session_question_row(PDO $pdo, int $session_id, int $position): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT q.id, q.question_text, q.category, q.options, q.correct_index
+        'SELECT q.id, q.question_text, q.image_url, q.category, q.difficulty, q.options, q.correct_index
          FROM session_questions sq
          JOIN questions q ON q.id = sq.question_id
          WHERE sq.session_id = ? AND sq.position = ?'
@@ -372,7 +372,9 @@ function fetch_session_question_plan(PDO $pdo, int $session_id): array
             sq.position,
             q.id,
             q.question_text,
+            q.image_url,
             q.category,
+            q.difficulty,
             q.options
          FROM session_questions sq
          JOIN questions q ON q.id = sq.question_id
@@ -409,11 +411,13 @@ function question_option_text_at_index(array $question_row, ?int $option_index):
 function format_question_payload(array $question_row, int $position, int $elapsed_ms = 0): array
 {
     return [
-        'index' => $position,
-        'id' => (int) $question_row['id'],
-        'text' => $question_row['question_text'],
-        'category' => $question_row['category'],
-        'options' => question_options_from_row($question_row),
+        'index'      => $position,
+        'id'         => (int) $question_row['id'],
+        'text'       => $question_row['question_text'],
+        'image_url'  => $question_row['image_url'] ?? null,
+        'category'   => $question_row['category'],
+        'difficulty' => $question_row['difficulty'] ?? 'easy',
+        'options'    => question_options_from_row($question_row),
         'time_limit' => QUESTION_DURATION_SEC,
         'server_time' => microtime(true),
         'elapsed_ms' => max(0, $elapsed_ms),
@@ -450,7 +454,7 @@ function fetch_session_players(PDO $pdo, int $session_id, int $host_player_id = 
            AND a.session_id = p.session_id
          WHERE p.session_id = ?
          GROUP BY p.id, p.name, p.score, p.total_time_ms, p.finished_at
-         ORDER BY p.score DESC, correct_answers DESC, p.total_time_ms ASC, p.id ASC'
+         ORDER BY correct_answers DESC, p.total_time_ms ASC, p.id ASC'
     );
     $stmt->execute([$session_id]);
 

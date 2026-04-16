@@ -114,6 +114,10 @@ function ensure_group_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE answers ADD COLUMN points_awarded INT UNSIGNED NOT NULL DEFAULT 0 AFTER time_ms");
     }
 
+    if (!group_column_exists($pdo, 'questions', 'image_url')) {
+        $pdo->exec("ALTER TABLE questions ADD COLUMN image_url VARCHAR(255) NULL AFTER question_text");
+    }
+
     if (!group_column_exists($pdo, 'players', 'auth_token')) {
         $pdo->exec("ALTER TABLE players ADD COLUMN auth_token CHAR(64) NULL AFTER name");
     }

@@ -372,6 +372,22 @@ a {
     border-radius: 1.6rem;
 }
 
+.question-image-wrap {
+    display: flex;
+    justify-content: center;
+    margin: 0.5rem 0 0.75rem;
+}
+
+.question-img {
+    max-height: 150px;
+    max-width: min(100%, 280px);
+    border-radius: 0.75rem;
+    border: 1px solid var(--gc-border);
+    object-fit: contain;
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
 .question-panel::before {
     content: '';
     position: absolute;
@@ -958,6 +974,195 @@ a {
         position: static;
     }
 }
+
+/* ══ Home-page animations ════════════════════════════════════════════════════ */
+
+@keyframes gc-orb-a {
+    0%   { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(90px, 110px) scale(1.22); }
+}
+
+@keyframes gc-orb-b {
+    0%   { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(-65px, -85px) scale(1.18); }
+}
+
+@keyframes gc-float {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(-14px); }
+}
+
+@keyframes gc-logo-shimmer {
+    0%   { background-position: 220% center; }
+    100% { background-position: -60% center; }
+}
+
+@keyframes gc-fade-up {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gc-fade-right {
+    from { opacity: 0; transform: translateX(28px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes gc-ripple {
+    to { width: 360px; height: 360px; opacity: 0; }
+}
+
+/* Drifting background orbs */
+.home-bg {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+}
+
+.home-bg::before {
+    content: '';
+    position: absolute;
+    top: -160px;
+    left: -160px;
+    width: 560px;
+    height: 560px;
+    border-radius: 999px;
+    background: radial-gradient(circle, rgba(30, 167, 161, 0.17), transparent 65%);
+    filter: blur(62px);
+    animation: gc-orb-a 24s ease-in-out infinite alternate;
+}
+
+.home-bg::after {
+    content: '';
+    position: absolute;
+    bottom: -120px;
+    right: -120px;
+    width: 460px;
+    height: 460px;
+    border-radius: 999px;
+    background: radial-gradient(circle, rgba(240, 180, 75, 0.14), transparent 65%);
+    filter: blur(54px);
+    animation: gc-orb-b 18s ease-in-out infinite alternate;
+}
+
+/* Lift main above orb layer */
+.page-home > main {
+    position: relative;
+    z-index: 1;
+}
+
+/* Hero graphic: fade in from right, then float forever */
+.hero-graphic {
+    animation:
+        gc-fade-right 0.85s 0.32s ease both,
+        gc-float 6s 1.2s ease-in-out infinite;
+}
+
+/* Logo shimmer + entrance */
+.page-home .logo {
+    background: linear-gradient(
+        90deg,
+        #f4efe7 18%,
+        #1ea7a1 38%,
+        #f0b44b 56%,
+        #f4efe7 74%
+    );
+    background-size: 260% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation:
+        gc-logo-shimmer 7s linear infinite,
+        gc-fade-up 0.65s 0.1s ease both;
+}
+
+/* Staggered hero text entrance */
+.page-home .eyebrow {
+    animation: gc-fade-up 0.55s 0.02s ease both;
+}
+
+.page-home .tagline {
+    animation: gc-fade-up 0.65s 0.24s ease both;
+}
+
+.page-home .hero-highlights {
+    animation: gc-fade-up 0.65s 0.38s ease both;
+}
+
+/* Card section stagger */
+.page-home .row.align-items-stretch > .col-lg-6:nth-child(1) {
+    animation: gc-fade-up 0.7s 0.52s ease both;
+}
+
+.page-home .row.align-items-stretch > .col-lg-6:nth-child(2) {
+    animation: gc-fade-up 0.7s 0.68s ease both;
+}
+
+/* Card hover lift */
+.page-home .app-card {
+    transition: transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease;
+}
+
+.page-home .app-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 36px 72px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(30, 167, 161, 0.24);
+    border-color: rgba(30, 167, 161, 0.3);
+}
+
+/* Highlight pill hover lift */
+.highlight-pill {
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.highlight-pill:hover {
+    transform: translateY(-3px);
+    border-color: rgba(240, 180, 75, 0.58);
+    box-shadow: 0 6px 18px rgba(240, 180, 75, 0.2);
+}
+
+/* Input focus glow */
+.page-home .form-control:focus,
+.page-home .form-select:focus {
+    box-shadow: 0 0 0 0.25rem rgba(30, 167, 161, 0.18), 0 0 22px rgba(30, 167, 161, 0.1);
+}
+
+/* Ripple container */
+.page-home .btn {
+    overflow: hidden;
+}
+
+.btn-ripple {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.22);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    animation: gc-ripple 0.65s ease-out forwards;
+}
+
+/* Respect reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+    .home-bg::before,
+    .home-bg::after,
+    .hero-graphic,
+    .page-home .logo,
+    .page-home .eyebrow,
+    .page-home .tagline,
+    .page-home .hero-highlights,
+    .page-home .row.align-items-stretch > .col-lg-6 {
+        animation: none !important;
+    }
+
+    .page-home .logo {
+        -webkit-text-fill-color: var(--gc-ink);
+        background: none;
+    }
+}
+
+/* ══ End home-page animations ════════════════════════════════════════════════ */
 
 @media (max-width: 767.98px) {
     .lobby-shell,

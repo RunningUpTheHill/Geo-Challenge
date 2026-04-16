@@ -146,11 +146,13 @@ function normalizeQuestionRecord(question, fallbackIndex = null) {
     }
 
     return {
-        index: Number(question.index ?? fallbackIndex ?? 0),
-        id: Number(question.id || 0),
-        text: String(question.text || ''),
-        category: String(question.category || ''),
-        options: Array.isArray(question.options) ? question.options.slice() : [],
+        index:      Number(question.index ?? fallbackIndex ?? 0),
+        id:         Number(question.id || 0),
+        text:       String(question.text || ''),
+        image_url:  question.image_url || null,
+        category:   String(question.category || ''),
+        difficulty: String(question.difficulty || 'easy'),
+        options:    Array.isArray(question.options) ? question.options.slice() : [],
         time_limit: Number(question.time_limit || gameApp.question_duration || 0),
         elapsed_ms: Number(question.elapsed_ms || 0),
     };
@@ -584,11 +586,18 @@ function renderQuestion(data, timingData = null) {
     restoreStatusPolling();
 
     questionCounter.textContent = `Question ${data.index + 1} of ${numQuestions}`;
+    const difficultyBadgeClass = { easy: 'text-bg-success', medium: 'text-bg-warning', hard: 'text-bg-danger' };
+    categoryBadge.className = `badge ${difficultyBadgeClass[data.difficulty] || 'text-bg-primary'}`;
     categoryBadge.textContent = capitalize(data.category);
+
+    const imageHtml = data.image_url
+        ? `<div class="question-image-wrap"><img src="${data.image_url}" class="question-img" alt="Question visual" loading="lazy"></div>`
+        : '';
 
     questionBox.innerHTML = `
         <div class="question-stage">
             <span class="question-kicker">Make your pick</span>
+            ${imageHtml}
             <p class="question-text">${gameEscapeHtml(data.text)}</p>
             <p class="question-subtle mb-0">Choose fast, but choose carefully. Once you lock it in, your answer is final.</p>
         </div>
@@ -687,6 +696,7 @@ function renderRoundLeaderboard(players, questionIndex, elapsedMs = 0, viewerRou
     questionBox.dataset.view = 'leaderboard';
 
     questionCounter.textContent = `Round ${Number(questionIndex) + 1} Results`;
+    categoryBadge.className = 'badge text-bg-primary';
     categoryBadge.textContent = 'Leaderboard';
     optionsGrid.classList.add('hidden');
     optionsGrid.innerHTML = '';
@@ -707,7 +717,7 @@ function renderRoundLeaderboard(players, questionIndex, elapsedMs = 0, viewerRou
                     <div class="leaderboard-row ${player.is_you ? 'is-you' : ''}">
                         <span class="leaderboard-rank">#${player.rank}</span>
                         <span class="leaderboard-name">${gameEscapeHtml(player.name)}${player.is_host ? ' <small>(Host)</small>' : ''}${player.is_you ? ' <small>(You)</small>' : ''}</span>
-                        <span class="leaderboard-points">${player.score} pts</span>
+                        <span class="leaderboard-points">${player.correct_answers}/${numQuestions} correct</span>
                     </div>
                 `).join('')}
             </div>

@@ -120,3 +120,89 @@ $('#join-form').on('submit', (event) => {
 $('#join-code').on('input', function onCodeInput() {
     $(this).val($(this).val().toUpperCase());
 });
+
+/* ── Floating particle canvas ────────────────────────────────────────────── */
+(function initParticles() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.setAttribute('aria-hidden', 'true');
+    canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;';
+    document.body.insertBefore(canvas, document.body.firstChild);
+
+    const ctx = canvas.getContext('2d');
+    const COLORS = [
+        [30, 167, 161],
+        [240, 180, 75],
+        [60, 207, 145],
+    ];
+    let W, H, particles, raf;
+
+    function resize() {
+        W = canvas.width = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+    }
+
+    function makeParticle() {
+        const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+        return {
+            x: Math.random() * W,
+            y: Math.random() * H,
+            r: Math.random() * 1.3 + 0.4,
+            vx: (Math.random() - 0.5) * 0.26,
+            vy: (Math.random() - 0.5) * 0.26,
+            alpha: Math.random() * 0.3 + 0.07,
+            color,
+        };
+    }
+
+    function init() {
+        particles = Array.from({ length: 48 }, makeParticle);
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, W, H);
+        for (const p of particles) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},${p.alpha})`;
+            ctx.fill();
+            p.x += p.vx;
+            p.y += p.vy;
+            if (p.x < -4) p.x = W + 4;
+            else if (p.x > W + 4) p.x = -4;
+            if (p.y < -4) p.y = H + 4;
+            else if (p.y > H + 4) p.y = -4;
+        }
+        raf = requestAnimationFrame(draw);
+    }
+
+    resize();
+    init();
+    draw();
+
+    window.addEventListener('resize', () => {
+        cancelAnimationFrame(raf);
+        resize();
+        init();
+        draw();
+    });
+}());
+
+/* ── Button click ripple ─────────────────────────────────────────────────── */
+(function initRipple() {
+    function attachRipple($btn) {
+        $btn.on('click.ripple', function handleRipple(e) {
+            const off = $(this).offset();
+            const $r = $('<span class="btn-ripple"></span>').css({
+                left: e.pageX - off.left,
+                top: e.pageY - off.top,
+            });
+            $(this).append($r);
+            setTimeout(() => $r.remove(), 700);
+        });
+    }
+
+    attachRipple($('#create-btn'));
+    attachRipple($('#join-btn'));
+}());

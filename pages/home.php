@@ -17,6 +17,7 @@ $page_state = app_state([
     <link rel="stylesheet" href="<?= escape_html(asset_url('public/css/style.css')) ?>">
 </head>
 <body class="page-home">
+    <div class="home-bg" aria-hidden="true"></div>
     <main class="container py-5">
         <section class="hero-panel row align-items-center g-4 mb-4">
             <div class="col-lg-6">

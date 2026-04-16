@@ -41,8 +41,8 @@ function renderPodium(players) {
         <div class="podium-block ${index === 1 || displayOrder.length === 1 ? 'featured' : ''}" style="height:${heights[index]}">
             <div class="podium-medal">${medals[index]}</div>
             <div class="podium-name">${resultsEscapeHtml(player.name)}</div>
-            <div class="podium-score">${player.score} pts</div>
-            <div class="subtle-copy small">${player.correct_answers}/${totalQuestions} correct</div>
+            <div class="podium-score">${player.correct_answers}/${totalQuestions} correct</div>
+            <div class="subtle-copy small">${player.score} pts</div>
         </div>
     `).join(''));
 }
@@ -52,8 +52,8 @@ function renderTable(players) {
         <tr class="${index === 0 ? 'winner-row' : ''}">
             <td class="rank-cell">${player.rank || index + 1}</td>
             <td>${resultsEscapeHtml(player.name)}</td>
-            <td>${player.correct_answers} / ${totalQuestions}</td>
-            <td><strong>${player.score}</strong> pts</td>
+            <td><strong>${player.correct_answers} / ${totalQuestions}</strong></td>
+            <td>${player.score} pts</td>
             <td>${formatTime(player.total_time_ms)}</td>
         </tr>
     `).join(''));

@@ -22,38 +22,73 @@ if ($session['status'] !== 'waiting') {
 
 $num_questions = (int) $session['num_questions'];
 
-// Pick 2 questions per category (14 total), shuffle, take num_questions
-$categories = ['capitals','flags','languages','currency','geography','government','alliances'];
-$question_ids = [];
-
-$per_cat = $pdo->prepare('SELECT id FROM questions WHERE category = ? ORDER BY RAND() LIMIT 2');
-foreach ($categories as $cat) {
-    $per_cat->execute([$cat]);
-    foreach ($per_cat->fetchAll(PDO::FETCH_COLUMN) as $qid) {
-        $question_ids[] = (int) $qid;
+/**
+ * Pick $count random question IDs at a given difficulty, excluding already-chosen IDs.
+ * Returns fewer than $count if the question bank doesn't have enough at that tier.
+ */
+function pick_ids_at_difficulty(PDO $pdo, string $difficulty, int $count, array $exclude): array
+{
+    if ($count <= 0) {
+        return [];
     }
-}
 
-shuffle($question_ids);
-$question_ids = array_slice(array_unique($question_ids), 0, $num_questions);
-
-// Fill up if we still don't have enough
-$needed = $num_questions - count($question_ids);
-if ($needed > 0) {
-    if (count($question_ids) > 0) {
-        $placeholders = implode(',', array_fill(0, count($question_ids), '?'));
-        $fill = $pdo->prepare(
-            "SELECT id FROM questions WHERE id NOT IN ($placeholders) ORDER BY RAND() LIMIT $needed"
+    if (count($exclude) > 0) {
+        $placeholders = implode(',', array_fill(0, count($exclude), '?'));
+        $stmt = $pdo->prepare(
+            "SELECT id FROM questions
+             WHERE difficulty = ? AND id NOT IN ($placeholders)
+             ORDER BY RAND() LIMIT $count"
         );
-        $fill->execute($question_ids);
+        $stmt->execute(array_merge([$difficulty], $exclude));
     } else {
-        $fill = $pdo->prepare("SELECT id FROM questions ORDER BY RAND() LIMIT $needed");
-        $fill->execute();
+        $stmt = $pdo->prepare(
+            "SELECT id FROM questions WHERE difficulty = ? ORDER BY RAND() LIMIT $count"
+        );
+        $stmt->execute([$difficulty]);
     }
-    foreach ($fill->fetchAll(PDO::FETCH_COLUMN) as $qid) {
-        $question_ids[] = (int) $qid;
+
+    return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
+// Progressive difficulty tiers: 40% easy → 40% medium → 20% hard
+$hard_count   = max(1, (int) round($num_questions * 0.20));
+$medium_count = (int) round($num_questions * 0.40);
+$easy_count   = $num_questions - $hard_count - $medium_count;
+
+$easy_ids   = pick_ids_at_difficulty($pdo, 'easy',   $easy_count,   []);
+$medium_ids = pick_ids_at_difficulty($pdo, 'medium', $medium_count, $easy_ids);
+$hard_ids   = pick_ids_at_difficulty($pdo, 'hard',   $hard_count,   array_merge($easy_ids, $medium_ids));
+
+// If any tier is short, backfill from adjacent difficulties
+$all_chosen  = array_merge($easy_ids, $medium_ids, $hard_ids);
+$still_needed = $num_questions - count($all_chosen);
+
+if ($still_needed > 0) {
+    // Pull from whatever difficulty has leftovers, avoiding duplicates
+    foreach (['medium', 'easy', 'hard'] as $fallback) {
+        if ($still_needed <= 0) {
+            break;
+        }
+        $extras = pick_ids_at_difficulty($pdo, $fallback, $still_needed, $all_chosen);
+        $all_chosen    = array_merge($all_chosen, $extras);
+        $still_needed -= count($extras);
     }
 }
+
+// Shuffle within each tier so category order is random, but tiers stay ordered
+shuffle($easy_ids);
+shuffle($medium_ids);
+shuffle($hard_ids);
+
+// Final ordered list: easy → medium → hard
+$question_ids = array_merge($easy_ids, $medium_ids, $hard_ids);
+
+// If we still need more (extreme edge case: very small question bank), append backfill
+if (count($question_ids) < $num_questions) {
+    $question_ids = array_merge($question_ids, array_slice($all_chosen, count($question_ids)));
+}
+
+$question_ids = array_slice(array_unique($question_ids), 0, $num_questions);
 
 $pdo->beginTransaction();
 try {
