@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
+  <title id="title">Geography illustration</title>
+  <desc id="desc">A globe, mountains, and water shapes for geography trivia questions.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#11305d"/>
+      <stop offset="100%" stop-color="#4ea9de"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#bg)"/>
+  <circle cx="320" cy="158" r="108" fill="#9ce7ff"/>
+  <circle cx="320" cy="158" r="108" fill="none" stroke="#d9fbff" stroke-width="8"/>
+  <path d="M271 96c-24 10-46 28-50 52 14 14 41 6 58 20 22 18 46 26 78 20 18-4 32-18 44-32-8-16-22-24-38-28-10-2-20-10-28-20-12-14-40-22-64-12Z" fill="#45b97c"/>
+  <path d="M248 180c-30 16-44 38-38 62 28 10 46 4 62 14 20 12 58 10 80-6 14-10 32-14 40-34-16-18-48-12-70-18-28-8-42-30-74-18Z" fill="#3ca36c"/>
+  <g stroke="#d9fbff" stroke-width="4" opacity="0.65">
+    <ellipse cx="320" cy="158" rx="84" ry="108" fill="none"/>
+    <ellipse cx="320" cy="158" rx="42" ry="108" fill="none"/>
+    <path d="M212 158h216"/>
+    <path d="M228 122h184"/>
+    <path d="M228 194h184"/>
+  </g>
+  <path d="M64 304h512" stroke="#d1f1ff" stroke-width="10" stroke-linecap="round" opacity="0.55"/>
+  <path d="M104 300l88-106 62 82 46-58 84 82Z" fill="#163454"/>
+  <path d="M326 300l72-92 54 64 40-44 64 72Z" fill="#24527a"/>
+  <path d="M188 234l24-30 18 24Z" fill="#f7fbff"/>
+  <path d="M394 220l20-28 16 20Z" fill="#f7fbff"/>
+</svg>

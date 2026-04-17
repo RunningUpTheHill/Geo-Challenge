@@ -146,6 +146,7 @@ while (true) {
                     sse_emit('question', array_merge(
                         $payload,
                         format_question_payload(
+                            $pdo,
                             $question,
                             $question_index,
                             question_elapsed_ms($pdo, $session_id)

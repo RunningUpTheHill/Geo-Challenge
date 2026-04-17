@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS questions (
     category      ENUM('capitals','flags','languages','currency','geography','government','alliances') NOT NULL,
     difficulty    ENUM('easy','medium','hard') NOT NULL DEFAULT 'easy',
     question_text TEXT            NOT NULL,
-    image_url     VARCHAR(255)    NULL,
+    image_url     VARCHAR(512)    NULL,
+    image_lookup_query VARCHAR(255) NULL,
     options       JSON            NOT NULL,
     correct_index TINYINT UNSIGNED NOT NULL
 ) ENGINE=InnoDB;

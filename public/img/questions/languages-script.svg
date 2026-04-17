@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
+  <title id="title">Language and script illustration</title>
+  <desc id="desc">Speech bubbles and lettering motifs for language trivia questions.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1f2a44"/>
+      <stop offset="100%" stop-color="#5d7dd6"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#bg)"/>
+  <circle cx="112" cy="90" r="44" fill="#9ad1ff" opacity="0.28"/>
+  <circle cx="520" cy="80" r="30" fill="#ffe08a" opacity="0.32"/>
+  <path d="M118 96c0-34 28-62 62-62h146c34 0 62 28 62 62s-28 62-62 62h-74l-42 40v-40h-30c-34 0-62-28-62-62Z" fill="#f7fbff"/>
+  <path d="M286 224c0-29 24-53 53-53h119c29 0 53 24 53 53s-24 53-53 53h-57l-30 28v-28h-32c-29 0-53-24-53-53Z" fill="#ffe8a3"/>
+  <g fill="#1a2a45" font-family="Verdana, Geneva, sans-serif" font-weight="700">
+    <text x="156" y="112" font-size="64">Aa</text>
+    <text x="264" y="112" font-size="46">Bb</text>
+    <text x="334" y="240" font-size="48">Cc</text>
+    <text x="418" y="240" font-size="42">Dd</text>
+  </g>
+  <g stroke="#9ad1ff" stroke-width="10" stroke-linecap="round" opacity="0.65">
+    <path d="M74 266h86"/>
+    <path d="M480 302h104"/>
+    <path d="M522 134h52"/>
+  </g>
+</svg>

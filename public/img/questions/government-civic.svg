@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
+  <title id="title">Government building illustration</title>
+  <desc id="desc">A civic building with columns for government trivia questions.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f1d3f"/>
+      <stop offset="100%" stop-color="#a64d79"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#bg)"/>
+  <circle cx="96" cy="84" r="32" fill="#ffd3e3" opacity="0.28"/>
+  <circle cx="532" cy="92" r="46" fill="#ffe2a8" opacity="0.24"/>
+  <rect x="114" y="280" width="412" height="28" rx="6" fill="#321127"/>
+  <rect x="146" y="146" width="348" height="132" rx="10" fill="#ffe8ee"/>
+  <path d="M320 76l184 64H136Z" fill="#ffd166"/>
+  <rect x="176" y="158" width="34" height="108" rx="6" fill="#c87298"/>
+  <rect x="240" y="158" width="34" height="108" rx="6" fill="#c87298"/>
+  <rect x="304" y="158" width="34" height="108" rx="6" fill="#c87298"/>
+  <rect x="368" y="158" width="34" height="108" rx="6" fill="#c87298"/>
+  <rect x="432" y="158" width="34" height="108" rx="6" fill="#c87298"/>
+  <rect x="156" y="140" width="328" height="18" rx="4" fill="#ffcadf"/>
+  <rect x="160" y="266" width="320" height="12" rx="4" fill="#ffcadf"/>
+  <path d="M320 104c20 0 36 16 36 36v18h-72v-18c0-20 16-36 36-36Z" fill="#ffd7a8"/>
+  <path d="M300 124h40v18h-40Z" fill="#a64d79"/>
+</svg>

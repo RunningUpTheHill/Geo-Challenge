@@ -354,7 +354,7 @@ function bump_session_state_version(PDO $pdo, int $session_id): void
 function fetch_session_question_row(PDO $pdo, int $session_id, int $position): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT q.id, q.question_text, q.image_url, q.category, q.difficulty, q.options, q.correct_index
+        'SELECT q.id, q.question_text, q.image_url, q.image_lookup_query, q.category, q.difficulty, q.options, q.correct_index
          FROM session_questions sq
          JOIN questions q ON q.id = sq.question_id
          WHERE sq.session_id = ? AND sq.position = ?'
@@ -373,6 +373,7 @@ function fetch_session_question_plan(PDO $pdo, int $session_id): array
             q.id,
             q.question_text,
             q.image_url,
+            q.image_lookup_query,
             q.category,
             q.difficulty,
             q.options
@@ -386,7 +387,7 @@ function fetch_session_question_plan(PDO $pdo, int $session_id): array
     $plan = [];
     foreach ($stmt->fetchAll() as $row) {
         $position = (int) $row['position'];
-        $plan[] = format_question_payload($row, $position, 0);
+        $plan[] = format_question_payload($pdo, $row, $position, 0);
     }
 
     return $plan;
@@ -408,13 +409,396 @@ function question_option_text_at_index(array $question_row, ?int $option_index):
     return array_key_exists($option_index, $options) ? (string) $options[$option_index] : null;
 }
 
-function format_question_payload(array $question_row, int $position, int $elapsed_ms = 0): array
+function question_image_url(?string $image_url): ?string
 {
+    $value = trim((string) $image_url);
+
+    if ($value === '') {
+        return null;
+    }
+
+    if (preg_match('/^[a-z][a-z0-9+.-]*:\\/\\//i', $value)) {
+        return $value;
+    }
+
+    if ($value[0] === '/') {
+        return $value;
+    }
+
+    return app_url(ltrim($value, '/'));
+}
+
+function question_is_flag_category(array $question_row): bool
+{
+    return strtolower((string) ($question_row['category'] ?? '')) === 'flags';
+}
+
+function question_placeholder_image_path(?string $category): ?string
+{
+    switch (strtolower(trim((string) $category))) {
+        case 'capitals':
+            return 'public/img/questions/capitals-landmark.svg';
+        case 'languages':
+            return 'public/img/questions/languages-script.svg';
+        case 'currency':
+            return 'public/img/questions/currency-banknote.svg';
+        case 'geography':
+            return 'public/img/questions/geography-globe.svg';
+        case 'government':
+            return 'public/img/questions/government-civic.svg';
+        case 'alliances':
+            return 'public/img/questions/alliances-network.svg';
+        default:
+            return null;
+    }
+}
+
+function question_has_cached_wikimedia_image(?string $image_url): bool
+{
+    $value = trim((string) $image_url);
+    if ($value === '') {
+        return false;
+    }
+
+    return preg_match('#^https://upload\\.wikimedia\\.org/#i', $value) === 1;
+}
+
+function question_default_image_alt(array $question_row): ?string
+{
+    $lookup_title = trim((string) ($question_row['image_lookup_query'] ?? ''));
+    if ($lookup_title !== '') {
+        return $lookup_title;
+    }
+
+    $question_text = trim((string) ($question_row['question_text'] ?? ''));
+    return $question_text !== '' ? $question_text : null;
+}
+
+function wikimedia_fetch_json(string $path): ?array
+{
+    $url = rtrim(WIKIMEDIA_API_BASE_URL, '/') . '/' . ltrim($path, '/');
+    $body = null;
+    $status_code = 0;
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_CONNECTTIMEOUT => WIKIMEDIA_API_TIMEOUT_SEC,
+            CURLOPT_TIMEOUT => WIKIMEDIA_API_TIMEOUT_SEC,
+            CURLOPT_USERAGENT => WIKIMEDIA_API_USER_AGENT,
+            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+        ]);
+
+        $response = curl_exec($ch);
+        if (is_string($response)) {
+            $body = $response;
+        }
+        $status_code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+    } else {
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'header' => implode("\r\n", [
+                    'Accept: application/json',
+                    'User-Agent: ' . WIKIMEDIA_API_USER_AGENT,
+                ]),
+                'timeout' => WIKIMEDIA_API_TIMEOUT_SEC,
+                'ignore_errors' => true,
+            ],
+        ]);
+        $response = @file_get_contents($url, false, $context);
+        if (is_string($response)) {
+            $body = $response;
+        }
+        foreach ($http_response_header ?? [] as $header_line) {
+            if (preg_match('#^HTTP/\\S+\\s+(\\d{3})#', (string) $header_line, $matches)) {
+                $status_code = (int) ($matches[1] ?? 0);
+                break;
+            }
+        }
+    }
+
+    if ($status_code !== 200 || !is_string($body) || trim($body) === '') {
+        return null;
+    }
+
+    $decoded = json_decode($body, true);
+    return is_array($decoded) ? $decoded : null;
+}
+
+function wikimedia_normalize_image_url(?string $url): ?string
+{
+    $value = trim((string) $url);
+    if ($value === '') {
+        return null;
+    }
+
+    if (string_starts_with($value, '//')) {
+        $value = 'https:' . $value;
+    }
+
+    if (preg_match('#^https://upload\\.wikimedia\\.org/#i', $value) !== 1) {
+        return null;
+    }
+
+    return $value;
+}
+
+function wikimedia_caption_text($caption): string
+{
+    if (is_string($caption)) {
+        return trim($caption);
+    }
+
+    if (!is_array($caption)) {
+        return '';
+    }
+
+    foreach (['text', 'html'] as $key) {
+        if (!empty($caption[$key]) && is_string($caption[$key])) {
+            return trim(strip_tags($caption[$key]));
+        }
+    }
+
+    return '';
+}
+
+function wikimedia_media_reject_keywords(): array
+{
+    return [
+        'flag',
+        'logo',
+        'emblem',
+        'coat of arms',
+        'coat_of_arms',
+        'seal',
+        'map',
+        'locator',
+        'orthographic',
+        'diagram',
+        'chart',
+        'graph',
+        'symbol',
+        'script',
+        'alphabet',
+        'writing',
+        'stamp',
+        'icon',
+    ];
+}
+
+function wikimedia_image_score(string $url): int
+{
+    if (preg_match('/\\.(?:jpe?g)(?:$|[?#])/i', $url)) {
+        return 120;
+    }
+    if (preg_match('/\\.webp(?:$|[?#])/i', $url)) {
+        return 115;
+    }
+    if (preg_match('/\\.png(?:$|[?#])/i', $url)) {
+        return 80;
+    }
+
+    return 40;
+}
+
+function wikimedia_candidate_text_should_reject(string $text): bool
+{
+    foreach (wikimedia_media_reject_keywords() as $keyword) {
+        if ($keyword !== '' && stripos($text, $keyword) !== false) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function wikimedia_media_candidate(array $item, int $index, string $fallback_alt): ?array
+{
+    if (($item['type'] ?? '') !== 'image') {
+        return null;
+    }
+
+    $srcset = $item['srcset'] ?? null;
+    if (!is_array($srcset) || empty($srcset)) {
+        return null;
+    }
+
+    $src_url = null;
+    foreach (array_reverse($srcset) as $src) {
+        if (!empty($src['src']) && is_string($src['src'])) {
+            $src_url = wikimedia_normalize_image_url($src['src']);
+            if ($src_url !== null) {
+                break;
+            }
+        }
+    }
+    if ($src_url === null) {
+        return null;
+    }
+
+    $title = trim((string) ($item['title'] ?? ''));
+    $caption = wikimedia_caption_text($item['caption'] ?? null);
+    $candidate_text = trim($title . ' ' . $caption . ' ' . basename(parse_url($src_url, PHP_URL_PATH) ?: ''));
+    if ($candidate_text !== '' && wikimedia_candidate_text_should_reject($candidate_text)) {
+        return null;
+    }
+
+    $alt_text = $caption !== '' ? $caption : $fallback_alt;
+
+    return [
+        'url' => $src_url,
+        'alt' => $alt_text,
+        'score' => wikimedia_image_score($src_url) - $index,
+    ];
+}
+
+function wikimedia_summary_candidate(array $summary, string $fallback_alt): ?array
+{
+    $thumbnail = $summary['thumbnail']['source'] ?? ($summary['originalimage']['source'] ?? null);
+    $src_url = wikimedia_normalize_image_url(is_string($thumbnail) ? $thumbnail : null);
+    if ($src_url === null) {
+        return null;
+    }
+
+    $candidate_text = trim(implode(' ', array_filter([
+        (string) ($summary['title'] ?? ''),
+        (string) ($summary['description'] ?? ''),
+        basename(parse_url($src_url, PHP_URL_PATH) ?: ''),
+    ])));
+    if ($candidate_text !== '' && wikimedia_candidate_text_should_reject($candidate_text)) {
+        return null;
+    }
+
+    return [
+        'url' => $src_url,
+        'alt' => $fallback_alt,
+        'score' => wikimedia_image_score($src_url),
+    ];
+}
+
+function wikimedia_resolve_image(string $lookup_title): ?array
+{
+    $encoded_title = rawurlencode($lookup_title);
+
+    $media_list = wikimedia_fetch_json('page/media-list/' . $encoded_title);
+    if (is_array($media_list)) {
+        $best_candidate = null;
+        foreach ($media_list['items'] ?? [] as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $candidate = wikimedia_media_candidate($item, (int) $index, $lookup_title);
+            if ($candidate === null) {
+                continue;
+            }
+
+            if ($best_candidate === null || $candidate['score'] > $best_candidate['score']) {
+                $best_candidate = $candidate;
+            }
+        }
+
+        if ($best_candidate !== null) {
+            unset($best_candidate['score']);
+            return $best_candidate;
+        }
+    }
+
+    $summary = wikimedia_fetch_json('page/summary/' . $encoded_title);
+    if (is_array($summary)) {
+        $candidate = wikimedia_summary_candidate($summary, $lookup_title);
+        if ($candidate !== null) {
+            unset($candidate['score']);
+            return $candidate;
+        }
+    }
+
+    return null;
+}
+
+function question_resolved_image_payload(PDO $pdo, array $question_row): array
+{
+    static $resolved_by_question_id = [];
+
+    $question_id = (int) ($question_row['id'] ?? 0);
+    if ($question_id > 0 && array_key_exists($question_id, $resolved_by_question_id)) {
+        return $resolved_by_question_id[$question_id];
+    }
+
+    if (question_is_flag_category($question_row)) {
+        $payload = [
+            'image_url' => question_image_url($question_row['image_url'] ?? null),
+            'image_alt' => question_default_image_alt($question_row),
+        ];
+        if ($question_id > 0) {
+            $resolved_by_question_id[$question_id] = $payload;
+        }
+        return $payload;
+    }
+
+    $lookup_title = trim((string) ($question_row['image_lookup_query'] ?? ''));
+    $cached_image_url = trim((string) ($question_row['image_url'] ?? ''));
+
+    if ($lookup_title !== '' && question_has_cached_wikimedia_image($cached_image_url)) {
+        $payload = [
+            'image_url' => question_image_url($cached_image_url),
+            'image_alt' => question_default_image_alt($question_row),
+        ];
+        if ($question_id > 0) {
+            $resolved_by_question_id[$question_id] = $payload;
+        }
+        return $payload;
+    }
+
+    if ($lookup_title !== '') {
+        $resolved = wikimedia_resolve_image($lookup_title);
+        if ($resolved !== null) {
+            if ($question_id > 0) {
+                try {
+                    $stmt = $pdo->prepare('UPDATE questions SET image_url = ? WHERE id = ?');
+                    $stmt->execute([$resolved['url'], $question_id]);
+                } catch (Throwable $e) {
+                    // Keep gameplay moving even if the cache write fails.
+                }
+            }
+
+            $payload = [
+                'image_url' => question_image_url($resolved['url']),
+                'image_alt' => trim((string) ($resolved['alt'] ?? '')) !== ''
+                    ? trim((string) $resolved['alt'])
+                    : question_default_image_alt($question_row),
+            ];
+            if ($question_id > 0) {
+                $resolved_by_question_id[$question_id] = $payload;
+            }
+            return $payload;
+        }
+    }
+
+    $payload = [
+        'image_url' => question_image_url(question_placeholder_image_path($question_row['category'] ?? null)),
+        'image_alt' => question_default_image_alt($question_row),
+    ];
+    if ($question_id > 0) {
+        $resolved_by_question_id[$question_id] = $payload;
+    }
+    return $payload;
+}
+
+function format_question_payload(PDO $pdo, array $question_row, int $position, int $elapsed_ms = 0): array
+{
+    $image_payload = question_resolved_image_payload($pdo, $question_row);
+
     return [
         'index'      => $position,
         'id'         => (int) $question_row['id'],
         'text'       => $question_row['question_text'],
-        'image_url'  => $question_row['image_url'] ?? null,
+        'image_url'  => $image_payload['image_url'] ?? null,
+        'image_alt'  => $image_payload['image_alt'] ?? null,
         'category'   => $question_row['category'],
         'difficulty' => $question_row['difficulty'] ?? 'easy',
         'options'    => question_options_from_row($question_row),

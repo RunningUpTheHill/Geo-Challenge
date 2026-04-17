@@ -38,6 +38,7 @@ if ($session['status'] === 'in_progress') {
         $question_row = fetch_session_question_row($pdo, (int) $session['id'], (int) $session['current_q_index']);
         if ($question_row) {
             $current_question = format_question_payload(
+                $pdo,
                 $question_row,
                 (int) $session['current_q_index'],
                 question_elapsed_ms($pdo, (int) $session['id'])

@@ -115,7 +115,18 @@ function ensure_group_schema(PDO $pdo): void {
     }
 
     if (!group_column_exists($pdo, 'questions', 'image_url')) {
-        $pdo->exec("ALTER TABLE questions ADD COLUMN image_url VARCHAR(255) NULL AFTER question_text");
+        $pdo->exec("ALTER TABLE questions ADD COLUMN image_url VARCHAR(512) NULL AFTER question_text");
+    }
+
+    $question_image_url_column = group_column_definition($pdo, 'questions', 'image_url');
+    if ($question_image_url_column !== null
+        && preg_match('/^varchar\\((\\d+)\\)$/i', (string) ($question_image_url_column['Type'] ?? ''), $matches)
+        && (int) ($matches[1] ?? 0) < 512) {
+        $pdo->exec("ALTER TABLE questions MODIFY image_url VARCHAR(512) NULL");
+    }
+
+    if (!group_column_exists($pdo, 'questions', 'image_lookup_query')) {
+        $pdo->exec("ALTER TABLE questions ADD COLUMN image_lookup_query VARCHAR(255) NULL AFTER image_url");
     }
 
     if (!group_column_exists($pdo, 'players', 'auth_token')) {
@@ -260,6 +271,8 @@ function ensure_group_schema(PDO $pdo): void {
          )"
     );
 
+    backfill_question_image_lookup_queries($pdo);
+
     $checked = true;
 }
 
@@ -295,4 +308,124 @@ function group_unique_index_exists_for_column(PDO $pdo, string $table, string $c
     }
 
     return false;
+}
+
+function question_image_lookup_seed_map(): array {
+    return [
+        'capitals' => [
+            'What is the capital of France?' => 'Paris',
+            'What is the capital of Australia?' => 'Canberra',
+            'What is the capital of Brazil?' => 'Brasília',
+            'What is the capital of Canada?' => 'Ottawa',
+            'What is the capital of Japan?' => 'Tokyo',
+            'What is the capital of Germany?' => 'Berlin',
+            'What is the capital of Mexico?' => 'Mexico City',
+            'What is the (administrative) capital of South Africa?' => 'Pretoria',
+            'What is the capital of Argentina?' => 'Buenos Aires',
+            'What is the capital of Nigeria?' => 'Abuja',
+            'What is the capital of Pakistan?' => 'Islamabad',
+            'What is the capital of Indonesia?' => 'Jakarta',
+            'What is the capital of Kazakhstan?' => 'Astana',
+            'What is the capital of Myanmar?' => 'Naypyidaw',
+            'What is the capital of Sri Lanka?' => 'Sri Jayawardenepura Kotte',
+        ],
+        'languages' => [
+            'What is the official language of Brazil?' => 'Rio de Janeiro',
+            'What language is primarily spoken in Egypt?' => 'Cairo',
+            'What is the official language of Mexico?' => 'Mexico City',
+            'What is the most widely spoken language in the world by number of native speakers?' => 'Beijing',
+            'What is the national language of Pakistan?' => 'Islamabad',
+            'What is the national language of Kenya?' => 'Nairobi',
+            'Which country has the most official languages?' => 'Cape Town',
+            'What language is spoken in Ethiopia as the official language?' => 'Addis Ababa',
+            'What is the official language of Suriname?' => 'Paramaribo',
+            'Which language has the most words in its dictionary?' => 'London',
+        ],
+        'currency' => [
+            'What currency does Japan use?' => 'Japanese yen',
+            'What is the currency of India?' => 'Indian rupee',
+            'What currency does the United States use?' => 'United States dollar',
+            'What is the currency of Switzerland?' => 'Swiss franc',
+            'What is the currency of Saudi Arabia?' => 'Saudi riyal',
+            'Which of these countries uses the Euro?' => 'Euro',
+            'What is the currency of South Korea?' => 'South Korean won',
+            'What is the currency of Azerbaijan?' => 'Azerbaijani manat',
+            'Which country uses the Zloty as its currency?' => 'Polish złoty',
+        ],
+        'geography' => [
+            'Which country is famously shaped like a boot?' => 'Italy',
+            'The mouth of the Amazon River is located in which country?' => 'Amazon River',
+            'Which is the largest country in the world by land area?' => 'Russia',
+            'On which continent is Egypt located?' => 'Egypt',
+            'Which country has the most natural lakes in the world?' => 'Canada',
+            'The Strait of Malacca separates which two landmasses?' => 'Strait of Malacca',
+            'Which country shares the longest land border with Russia?' => 'Kazakhstan',
+            'Mount Kilimanjaro is located in which country?' => 'Mount Kilimanjaro',
+            'Which country has the highest number of neighbouring countries?' => 'China',
+            'The Mariana Trench, the deepest point on Earth, is located in which ocean?' => 'Mariana Trench',
+            'Which of these rivers is the longest in the world?' => 'Nile',
+        ],
+        'government' => [
+            'Which of these countries is a republic?' => 'Paris',
+            'Which of these countries is a constitutional monarchy?' => 'Stockholm Palace',
+            'Which of these countries is governed as a federal republic?' => 'Reichstag building',
+            'Which of these countries has a communist single-party government?' => 'Great Hall of the People',
+            'Which country uses a parliamentary system with a prime minister as head of government?' => 'Parliament Hill',
+            "Which country is widely regarded as the world's oldest continuously governed republic?" => 'Palazzo Pubblico (San Marino)',
+            'What type of government system does Switzerland use, where executive power is shared by a seven-member council?' => 'Bern',
+            'Which country has a theocratic government led by a Supreme Leader?' => 'Tehran',
+        ],
+        'alliances' => [
+            'What does "UN" stand for?' => 'Headquarters of the United Nations',
+            'Which of these countries is NOT a member of NATO?' => 'Geneva',
+            'In which year was NATO founded?' => 'NATO Headquarters',
+            'What is the primary purpose of OPEC?' => 'OPEC',
+            'Which of these is NOT a permanent member of the UN Security Council?' => 'Berlin',
+            'How many countries were founding members of the European Communities (predecessor to the EU)?' => 'Treaties of Rome',
+            'In which year was the African Union founded?' => 'African Union Headquarters',
+            'Which country was the first to leave the European Union?' => 'Palace of Westminster',
+            'The ASEAN bloc was founded in 1967 with how many original member states?' => 'ASEAN Headquarters',
+        ],
+    ];
+}
+
+function backfill_question_image_lookup_queries(PDO $pdo): void {
+    if (!group_column_exists($pdo, 'questions', 'image_lookup_query')) {
+        return;
+    }
+
+    $categories = array_keys(question_image_lookup_seed_map());
+    if (empty($categories)) {
+        return;
+    }
+
+    $quoted_categories = array_map([$pdo, 'quote'], $categories);
+    $pdo->exec(
+        'UPDATE questions
+         SET image_url = NULL
+         WHERE category IN (' . implode(', ', $quoted_categories) . ")
+           AND image_url LIKE 'public/img/questions/%'"
+    );
+
+    $missing_lookup_count = (int) $pdo->query(
+        'SELECT COUNT(*) FROM questions WHERE category IN (' . implode(', ', $quoted_categories) . ")
+         AND (image_lookup_query IS NULL OR image_lookup_query = '')"
+    )->fetchColumn();
+    if ($missing_lookup_count <= 0) {
+        return;
+    }
+
+    $stmt = $pdo->prepare(
+        'UPDATE questions
+         SET image_lookup_query = ?
+         WHERE category = ?
+           AND question_text = ?
+           AND (image_lookup_query IS NULL OR image_lookup_query = \'\')'
+    );
+
+    foreach (question_image_lookup_seed_map() as $category => $question_map) {
+        foreach ($question_map as $question_text => $lookup_query) {
+            $stmt->execute([$lookup_query, $category, $question_text]);
+        }
+    }
 }

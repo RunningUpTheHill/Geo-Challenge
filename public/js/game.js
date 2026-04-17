@@ -27,6 +27,7 @@ let latestStateVersion = -1;
 let initialReadyAckPending = false;
 let viewerReadyConfirmed = false;
 let readyScreenRefs = null;
+let streamConnected = false;
 
 const gameReadyUrl = window.GEO_PLAYER_AUTH.withPlayerToken(gameApp.gameReadyUrl, gameAuth.playerToken);
 const gameStatusUrl = window.GEO_PLAYER_AUTH.withPlayerToken(gameApp.statusUrl, gameAuth.playerToken);
@@ -150,6 +151,7 @@ function normalizeQuestionRecord(question, fallbackIndex = null) {
         id:         Number(question.id || 0),
         text:       String(question.text || ''),
         image_url:  question.image_url || null,
+        image_alt:  question.image_alt || null,
         category:   String(question.category || ''),
         difficulty: String(question.difficulty || 'easy'),
         options:    Array.isArray(question.options) ? question.options.slice() : [],
@@ -316,7 +318,7 @@ function refreshGameStatus() {
 
 function goToResults() {
     gameStream.close();
-    window.clearInterval(statusPollTimer);
+    stopStatusPolling();
     stopTimer();
     window.location.href = gameApp.resultsUrl;
 }
@@ -591,7 +593,7 @@ function renderQuestion(data, timingData = null) {
     categoryBadge.textContent = capitalize(data.category);
 
     const imageHtml = data.image_url
-        ? `<div class="question-image-wrap"><img src="${data.image_url}" class="question-img" alt="Question visual" loading="lazy"></div>`
+        ? `<div class="question-image-wrap"><img src="${data.image_url}" class="question-img" alt="${gameEscapeHtml(data.image_alt || 'Question visual')}" loading="lazy"></div>`
         : '';
 
     questionBox.innerHTML = `
@@ -783,6 +785,11 @@ function disableOptions() {
 }
 
 function speedUpStatusPolling() {
+    if (streamConnected) {
+        stopStatusPolling();
+        return;
+    }
+
     window.clearInterval(statusPollTimer);
     statusPollTimer = window.setInterval(() => {
         refreshGameStatus();
@@ -790,10 +797,20 @@ function speedUpStatusPolling() {
 }
 
 function restoreStatusPolling() {
+    if (streamConnected) {
+        stopStatusPolling();
+        return;
+    }
+
     window.clearInterval(statusPollTimer);
     statusPollTimer = window.setInterval(() => {
         refreshGameStatus();
     }, GAME_STATUS_POLL_MS);
+}
+
+function stopStatusPolling() {
+    window.clearInterval(statusPollTimer);
+    statusPollTimer = null;
 }
 
 function applyGameState(data) {
@@ -939,18 +956,6 @@ function submitAnswer(chosenIndex, isTimeout = false) {
             shouldRefresh = false;
             return;
         }
-
-        lastAnswerSummary = {
-            questionIndex: Number(currentQuestion ? currentQuestion.index : 0),
-            chosenIndex: isTimeout ? null : chosenIndex,
-            chosenText,
-            correctIndex: null,
-            correctAnswerText: null,
-            isCorrect: false,
-            isTimeout,
-            pointsAwarded: 0,
-            timeMs: 0,
-        };
     }).always(() => {
         answerSubmitPending = false;
 
@@ -958,7 +963,9 @@ function submitAnswer(chosenIndex, isTimeout = false) {
             return;
         }
 
-        speedUpStatusPolling();
+        if (!streamConnected) {
+            speedUpStatusPolling();
+        }
         refreshGameStatus();
     });
 }
@@ -1038,7 +1045,13 @@ gameStream.addEventListener('game_end', () => {
     goToResults();
 });
 
+gameStream.onopen = () => {
+    streamConnected = true;
+    stopStatusPolling();
+};
+
 gameStream.onerror = () => {
+    streamConnected = false;
     speedUpStatusPolling();
 };
 

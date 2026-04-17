@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
+  <title id="title">International alliances illustration</title>
+  <desc id="desc">Connected nodes around a globe for alliances and organizations trivia questions.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#102542"/>
+      <stop offset="100%" stop-color="#226f9b"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#bg)"/>
+  <circle cx="320" cy="180" r="88" fill="#d7f7ff"/>
+  <circle cx="320" cy="180" r="88" fill="none" stroke="#7dd3fc" stroke-width="8"/>
+  <path d="M286 138c-20 10-36 20-42 40 20 8 30 24 52 28 20 4 34-2 52-10 12-6 26-4 38-14-6-20-26-22-38-34-20-18-36-22-62-10Z" fill="#36b37e"/>
+  <path d="M300 196c-14 8-26 22-26 38 18 8 30 6 44 12 20 8 46 6 64-6 10-8 22-12 28-26-16-12-32-6-48-10-20-4-34-20-62-8Z" fill="#2c9b6a"/>
+  <g stroke="#9adcf7" stroke-width="5" opacity="0.9">
+    <path d="M320 92V50"/>
+    <path d="M320 268v42"/>
+    <path d="M232 180h-58"/>
+    <path d="M408 180h58"/>
+    <path d="M258 118l-52-42"/>
+    <path d="M382 118l52-42"/>
+    <path d="M258 242l-52 42"/>
+    <path d="M382 242l52 42"/>
+  </g>
+  <g fill="#ffd166">
+    <circle cx="320" cy="38" r="18"/>
+    <circle cx="320" cy="322" r="18"/>
+    <circle cx="152" cy="180" r="18"/>
+    <circle cx="488" cy="180" r="18"/>
+    <circle cx="192" cy="64" r="18"/>
+    <circle cx="448" cy="64" r="18"/>
+    <circle cx="192" cy="296" r="18"/>
+    <circle cx="448" cy="296" r="18"/>
+  </g>
+  <g fill="#102542" font-family="Verdana, Geneva, sans-serif" font-size="16" font-weight="700">
+    <text x="307" y="44">UN</text>
+    <text x="304" y="328">EU</text>
+    <text x="137" y="186">AU</text>
+    <text x="470" y="186">NATO</text>
+  </g>
+</svg>
