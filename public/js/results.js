@@ -68,11 +68,10 @@ async function loadResults() {
     }
 }
 
-document.getElementById('share-btn').addEventListener('click', () => {
+$('#share-btn').on('click', function () {
     navigator.clipboard.writeText(window.location.href).then(() => {
-        const btn = document.getElementById('share-btn');
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = 'Copy Link', 2000);
+        $('#share-btn').text('Copied!');
+        setTimeout(() => $('#share-btn').text('Copy Link'), 2000);
     });
 });
 

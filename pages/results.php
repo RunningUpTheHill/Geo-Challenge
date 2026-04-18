@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Geo Challenge – Results</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="/public/css/style.css">
 </head>
 <body class="page-results">
@@ -12,7 +13,7 @@
 
         <div id="podium" class="podium"></div>
 
-        <table class="results-table" id="results-table">
+        <table class="results-table table table-striped table-hover" id="results-table">
             <thead>
                 <tr>
                     <th>#</th>
@@ -32,6 +33,8 @@
         </div>
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/public/js/results.js"></script>
 </body>
 </html>

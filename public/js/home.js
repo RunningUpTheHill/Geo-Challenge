@@ -91,21 +91,21 @@ async function joinGame() {
     }
 }
 
-document.getElementById('create-btn').addEventListener('click', createGame);
-document.getElementById('join-btn').addEventListener('click', joinGame);
+$(function () {
+    $('#create-btn').on('click', createGame);
+    $('#join-btn').on('click', joinGame);
 
-// Enter key support
-document.getElementById('create-name').addEventListener('keydown', e => {
-    if (e.key === 'Enter') createGame();
-});
-document.getElementById('join-code').addEventListener('keydown', e => {
-    if (e.key === 'Enter') joinGame();
-});
-document.getElementById('join-name').addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('join-code').focus();
-});
+    $('#create-name').on('keydown', function (e) {
+        if (e.key === 'Enter') createGame();
+    });
+    $('#join-code').on('keydown', function (e) {
+        if (e.key === 'Enter') joinGame();
+    });
+    $('#join-name').on('keydown', function (e) {
+        if (e.key === 'Enter') $('#join-code').trigger('focus');
+    });
 
-// Force uppercase on code input
-document.getElementById('join-code').addEventListener('input', function () {
-    this.value = this.value.toUpperCase();
+    $('#join-code').on('input', function () {
+        this.value = this.value.toUpperCase();
+    });
 });

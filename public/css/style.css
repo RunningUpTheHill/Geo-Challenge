@@ -31,6 +31,20 @@ body {
     line-height: 1.5;
 }
 
+/* ── Bootstrap dark theme tuning ────────────────────────── */
+[data-bs-theme="dark"] {
+    --bs-body-bg:           #0f172a;
+    --bs-body-color:        #f1f5f9;
+    --bs-card-bg:           #1e293b;
+    --bs-card-color:        #f1f5f9;
+    --bs-card-border-color: #334155;
+    --bs-border-color:      #334155;
+    --bs-secondary-bg:      #1e293b;
+    --bs-tertiary-bg:       #334155;
+    --bs-table-striped-bg:  rgba(255,255,255,.03);
+    --bs-table-hover-bg:    rgba(79,70,229,.08);
+}
+
 /* ── Utility ─────────────────────────────────────────────── */
 .hidden { display: none !important; }
 

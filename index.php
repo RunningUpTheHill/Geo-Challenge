@@ -39,6 +39,10 @@ if ($method === 'GET' && match_route('results/{code}', $uri, $route_params)) {
     require __DIR__ . '/pages/results.php'; exit;
 }
 
+if (match_route('admin', $uri, $route_params)) {
+    require __DIR__ . '/pages/admin.php'; exit;
+}
+
 // ── API routes ─────────────────────────────────────────────────────
 if ($method === 'POST' && $uri === 'api/session/create') {
     require __DIR__ . '/src/api/create_session.php'; exit;
@@ -60,6 +64,12 @@ if ($method === 'GET' && match_route('api/session/{code}/status', $uri, $route_p
 }
 if ($method === 'GET' && match_route('api/stream/{code}/{player_id}', $uri, $route_params)) {
     require __DIR__ . '/src/api/stream.php'; exit;
+}
+if ($method === 'POST' && $uri === 'api/question/add') {
+    require __DIR__ . '/src/api/add_question.php'; exit;
+}
+if ($method === 'POST' && $uri === 'api/question/delete') {
+    require __DIR__ . '/src/api/delete_question.php'; exit;
 }
 
 // ── 404 ────────────────────────────────────────────────────────────

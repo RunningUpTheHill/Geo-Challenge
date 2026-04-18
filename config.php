@@ -7,3 +7,6 @@ define('DB_PASS', 'root');  // MAMP default password
 
 define('QUESTIONS_PER_GAME', 10);
 define('QUESTION_DURATION_SEC', 20);
+
+define('ADMIN_USER', 'admin');
+define('ADMIN_PASS', 'geochallenge');
