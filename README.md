@@ -1,6 +1,6 @@
 # Geo Challenge
 
-A multiplayer geography trivia platform built with PHP, MySQL, and vanilla JavaScript.
+A multiplayer geography trivia platform built with PHP, MySQL, JavaScript, Bootstrap, and jQuery.
 
 ## Setup
 
@@ -52,6 +52,11 @@ Visit **http://localhost:8888** in your browser.
 ## Tech Stack
 - **Backend:** PHP (vanilla, no framework)
 - **Database:** MySQL
-- **Frontend:** HTML, CSS, JavaScript (no frameworks)
+- **Frontend:** HTML, CSS, JavaScript, Bootstrap 5, jQuery
 - **Real-time:** Server-Sent Events (SSE)
 - **Server:** Apache via MAMP
+
+## Admin Panel
+Visit **http://localhost:8888/admin** to manage questions.
+- Username: `admin`
+- Password: `geochallenge`
