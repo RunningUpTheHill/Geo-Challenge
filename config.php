@@ -11,3 +11,6 @@ define('MIN_POINTS_FOR_CORRECT', 500);
 define('WIKIMEDIA_API_BASE_URL', 'https://en.wikipedia.org/api/rest_v1');
 define('WIKIMEDIA_API_USER_AGENT', 'GeoChallengeImageResolver/1.0 (https://github.com/RunningUpTheHill/Geo-Challenge)');
 define('WIKIMEDIA_API_TIMEOUT_SEC', 2);
+
+define('ADMIN_USER', 'admin');
+define('ADMIN_PASS', 'geochallenge');
