@@ -7,6 +7,11 @@ $page_state = app_state([
     'streamUrl' => app_url('stream.php?code=' . urlencode($code)),
     'gameUrl' => app_url('game.php?code=' . urlencode($code)),
     'resultsUrl' => app_url('results.php?code=' . urlencode($code)),
+    'customQuizStateUrl' => app_url('custom_quiz_state.php?code=' . urlencode($code)),
+    'quizModeUrl' => app_url('set_quiz_mode.php'),
+    'customQuestionSaveUrl' => app_url('save_custom_question.php'),
+    'customQuestionDeleteUrl' => app_url('delete_custom_question.php'),
+    'customQuestionMoveUrl' => app_url('move_custom_question.php'),
 ]);
 ?>
 <!DOCTYPE html>
@@ -50,7 +55,96 @@ $page_state = app_state([
             </section>
 
             <div id="host-controls" class="hidden mt-4">
-                <div class="alert alert-info app-alert mb-3">You are the host for this room. Start the game when the full team has joined.</div>
+                <div class="alert alert-info app-alert mb-3">You are the host for this room. Choose the quiz mode, build your room if needed, then start when everyone has joined.</div>
+
+                <section class="builder-shell mb-4">
+                    <div class="builder-mode-header">
+                        <div>
+                            <h2 class="h4 mb-1">Quiz Mode</h2>
+                            <p id="quiz-mode-help" class="subtle-copy mb-0">Use the built-in geography bank or switch this room to a host-made custom quiz.</p>
+                        </div>
+                        <div class="btn-group quiz-mode-toggle" role="group" aria-label="Quiz mode">
+                            <button type="button" id="mode-built-in" class="btn btn-outline-light active">Built-In</button>
+                            <button type="button" id="mode-custom" class="btn btn-outline-light">Custom</button>
+                        </div>
+                    </div>
+                    <div id="custom-quiz-summary" class="builder-summary mt-3">Built-in mode uses the question count chosen when the room was created.</div>
+                </section>
+
+                <section id="custom-builder" class="builder-shell hidden mb-4">
+                    <div class="builder-mode-header align-items-start">
+                        <div>
+                            <h2 class="h4 mb-1">Custom Quiz Builder</h2>
+                            <p class="subtle-copy mb-0">Add your own 4-option questions for this room. Uploaded images stay attached to this room only.</p>
+                        </div>
+                    </div>
+
+                    <div id="custom-quiz-empty" class="empty-builder-state mt-3">No custom questions yet. Add one below to make this room playable in custom mode.</div>
+                    <div id="custom-quiz-list" class="custom-quiz-list mt-3"></div>
+
+                    <div class="builder-form-shell mt-4">
+                        <form id="custom-question-form" enctype="multipart/form-data" novalidate>
+                            <input type="hidden" id="custom-question-id" name="question_id" value="">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label" for="custom-topic-label">Topic Label</label>
+                                    <input class="form-control" type="text" id="custom-topic-label" name="topic_label" maxlength="80" placeholder="e.g. Science, Movies, History">
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label" for="custom-question-text">Question</label>
+                                    <input class="form-control" type="text" id="custom-question-text" name="question_text" maxlength="255" placeholder="Write your question">
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-6">
+                                    <label class="form-label" for="custom-option-0">Answer Option 1</label>
+                                    <input class="form-control" type="text" id="custom-option-0" name="option_0" maxlength="120" placeholder="First answer">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="custom-option-1">Answer Option 2</label>
+                                    <input class="form-control" type="text" id="custom-option-1" name="option_1" maxlength="120" placeholder="Second answer">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="custom-option-2">Answer Option 3</label>
+                                    <input class="form-control" type="text" id="custom-option-2" name="option_2" maxlength="120" placeholder="Third answer">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="custom-option-3">Answer Option 4</label>
+                                    <input class="form-control" type="text" id="custom-option-3" name="option_3" maxlength="120" placeholder="Fourth answer">
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mt-1 align-items-end">
+                                <div class="col-md-4">
+                                    <label class="form-label" for="custom-correct-index">Correct Answer</label>
+                                    <select class="form-select" id="custom-correct-index" name="correct_index">
+                                        <option value="0">Option 1</option>
+                                        <option value="1">Option 2</option>
+                                        <option value="2">Option 3</option>
+                                        <option value="3">Option 4</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label" for="custom-image">Question Image</label>
+                                    <input class="form-control" type="file" id="custom-image" name="image" accept="image/jpeg,image/png,image/webp,image/gif">
+                                </div>
+                                <div class="col-md-3">
+                                    <div id="remove-image-wrap" class="form-check hidden">
+                                        <input class="form-check-input" type="checkbox" id="remove-image" name="remove_image" value="1">
+                                        <label class="form-check-label" for="remove-image">Remove current image</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="builder-form-actions mt-4">
+                                <button id="save-custom-question-btn" type="submit" class="btn btn-primary">Save Question</button>
+                                <button id="cancel-custom-edit-btn" type="button" class="btn btn-outline-light hidden">Cancel Edit</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
                 <button id="start-btn" class="btn btn-primary btn-lg w-100">Start Game</button>
             </div>
 

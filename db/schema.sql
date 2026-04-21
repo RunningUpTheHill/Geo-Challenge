@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     code                CHAR(6)         NOT NULL UNIQUE,
     host_player_id      INT UNSIGNED    NULL,
     num_questions       TINYINT UNSIGNED NOT NULL DEFAULT 10,
+    quiz_mode           ENUM('built_in','custom') NOT NULL DEFAULT 'built_in',
     status              ENUM('waiting','in_progress','finished') NOT NULL DEFAULT 'waiting',
     round_phase         VARCHAR(20)     NOT NULL DEFAULT 'lobby',
     current_q_index     TINYINT UNSIGNED NOT NULL DEFAULT 0,
@@ -51,25 +52,48 @@ CREATE TABLE IF NOT EXISTS questions (
 CREATE TABLE IF NOT EXISTS session_questions (
     id          INT UNSIGNED    NOT NULL AUTO_INCREMENT PRIMARY KEY,
     session_id  INT UNSIGNED    NOT NULL,
-    question_id INT UNSIGNED    NOT NULL,
+    question_id INT UNSIGNED    NULL,
+    source      ENUM('built_in','custom') NOT NULL DEFAULT 'built_in',
+    custom_question_id INT UNSIGNED NULL,
     position    TINYINT UNSIGNED NOT NULL,
     UNIQUE KEY uq_session_position (session_id, position),
+    KEY idx_session_questions_custom_question (custom_question_id),
     CONSTRAINT fk_sq_session  FOREIGN KEY (session_id)  REFERENCES sessions(id)  ON DELETE CASCADE,
     CONSTRAINT fk_sq_question FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS session_custom_questions (
+    id               INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    session_id       INT UNSIGNED NOT NULL,
+    position         TINYINT UNSIGNED NOT NULL,
+    topic_label      VARCHAR(80) NOT NULL,
+    question_text    TEXT NOT NULL,
+    options          JSON NOT NULL,
+    correct_index    TINYINT UNSIGNED NOT NULL,
+    image_asset_path VARCHAR(255) NULL,
+    created_at       DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_session_custom_position (session_id, position),
+    CONSTRAINT fk_scq_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+ALTER TABLE session_questions ADD CONSTRAINT fk_sq_custom_question
+    FOREIGN KEY (custom_question_id) REFERENCES session_custom_questions(id) ON DELETE CASCADE;
 
 CREATE TABLE IF NOT EXISTS answers (
     id           INT UNSIGNED    NOT NULL AUTO_INCREMENT PRIMARY KEY,
     player_id    INT UNSIGNED    NOT NULL,
     session_id   INT UNSIGNED    NOT NULL,
-    question_id  INT UNSIGNED    NOT NULL,
+    question_id  INT UNSIGNED    NULL,
+    session_question_id INT UNSIGNED NULL,
     chosen_index TINYINT UNSIGNED NOT NULL,
     is_correct   TINYINT(1)      NOT NULL DEFAULT 0,
     time_ms      INT UNSIGNED    NOT NULL DEFAULT 0,
     points_awarded INT UNSIGNED  NOT NULL DEFAULT 0,
     submitted_at DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     UNIQUE KEY uq_player_question (player_id, question_id, session_id),
+    UNIQUE KEY uq_player_session_question (player_id, session_id, session_question_id),
     CONSTRAINT fk_ans_player   FOREIGN KEY (player_id)   REFERENCES players(id)   ON DELETE CASCADE,
     CONSTRAINT fk_ans_session  FOREIGN KEY (session_id)  REFERENCES sessions(id)  ON DELETE CASCADE,
-    CONSTRAINT fk_ans_question FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+    CONSTRAINT fk_ans_question FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ans_session_question FOREIGN KEY (session_question_id) REFERENCES session_questions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

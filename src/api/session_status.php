@@ -17,6 +17,7 @@ $viewer_player_id = (int) $active['player_id'];
 $viewer_is_host = !empty($active['is_host']) || $host_player_id === $viewer_player_id;
 $players = fetch_session_players($pdo, (int) $session['id'], $host_player_id, $viewer_player_id);
 $player_count = count($players);
+$custom_question_count = count_session_custom_questions($pdo, (int) $session['id']);
 $ready_player_count = count_ready_players_in_session($pdo, (int) $session['id']);
 $viewer_ready = is_player_game_ready($pdo, (int) $session['id'], $viewer_player_id);
 $phase_elapsed_ms = 0;
@@ -63,6 +64,8 @@ json_response([
     'current_q_index' => (int) $session['current_q_index'],
     'state_version' => (int) ($session['state_version'] ?? 0),
     'num_questions' => (int) $session['num_questions'],
+    'quiz_mode' => session_quiz_mode($session),
+    'custom_question_count' => $custom_question_count,
     'question_duration' => QUESTION_DURATION_SEC,
     'leaderboard_duration' => LEADERBOARD_PHASE_SEC,
     'ready_duration' => READY_PHASE_SEC,

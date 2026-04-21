@@ -11,12 +11,12 @@ if (session_status() === PHP_SESSION_ACTIVE) {
 }
 
 $player_id = (int) $active['player_id'];
-$question_id = (int) ($body['question_id'] ?? 0);
+$session_question_id = (int) ($body['question_id'] ?? 0);
 $raw_chosen_index = $body['chosen_index'] ?? null;
 $is_timeout = !is_numeric($raw_chosen_index);
 $chosen_index = $is_timeout ? 255 : (int) $raw_chosen_index;
 
-if (!$player_id || !$code || !$question_id || (!$is_timeout && ($chosen_index < 0 || $chosen_index > 3))) {
+if (!$player_id || !$code || !$session_question_id || (!$is_timeout && ($chosen_index < 0 || $chosen_index > 3))) {
     json_response(['error' => 'Invalid input'], 400);
 }
 
@@ -26,7 +26,7 @@ $session_id = (int) $session['id'];
 $phase = (string) ($session['round_phase'] ?? '');
 $q_index = (int) $session['current_q_index'];
 $current_q = fetch_session_question_row($pdo, $session_id, $q_index);
-$existing_answer = fetch_player_answer_row($pdo, $session_id, $question_id, $player_id);
+$existing_answer = fetch_player_answer_row($pdo, $session_id, $session_question_id, $player_id);
 
 if ($existing_answer && (int) $existing_answer['chosen_index'] !== 255) {
     json_response([
@@ -37,7 +37,7 @@ if ($existing_answer && (int) $existing_answer['chosen_index'] !== 255) {
     ]);
 }
 
-if (!$current_q || (int) $current_q['id'] !== $question_id) {
+if (!$current_q || (int) $current_q['id'] !== $session_question_id) {
     json_response(['error' => 'Question mismatch - this round has already advanced.'], 409);
 }
 
@@ -57,19 +57,21 @@ $points_awarded = calculate_answer_points($is_correct, $time_ms);
 $answer_saved = false;
 $score_delta = 0;
 $time_delta = 0;
+$built_in_question_id = (int) ($current_q['built_in_question_id'] ?? 0);
 
 try {
     $pdo->beginTransaction();
 
     if ($existing_answer === null) {
         $ins = $pdo->prepare(
-            'INSERT INTO answers (player_id, session_id, question_id, chosen_index, is_correct, time_ms, points_awarded)
-             VALUES (?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO answers (player_id, session_id, question_id, session_question_id, chosen_index, is_correct, time_ms, points_awarded)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $ins->execute([
             $player_id,
             $session_id,
-            $question_id,
+            $built_in_question_id > 0 ? $built_in_question_id : null,
+            $session_question_id,
             $chosen_index,
             $is_correct ? 1 : 0,
             $time_ms,
@@ -90,7 +92,7 @@ try {
                  points_awarded = ?
              WHERE player_id = ?
                AND session_id = ?
-               AND question_id = ?
+               AND session_question_id = ?
                AND chosen_index = 255'
         );
         $update->execute([
@@ -100,7 +102,7 @@ try {
             $points_awarded,
             $player_id,
             $session_id,
-            $question_id,
+            $session_question_id,
         ]);
 
         $answer_saved = $update->rowCount() > 0;
@@ -129,7 +131,7 @@ try {
 }
 
 if ($answer_saved) {
-    $answered_count = count_answers_for_question($pdo, $session_id, $question_id);
+    $answered_count = count_answers_for_question($pdo, $session_id, $session_question_id);
     $total_players = count_players_in_session($pdo, $session_id);
 
     if ($phase === 'question' && $answered_count >= $total_players) {

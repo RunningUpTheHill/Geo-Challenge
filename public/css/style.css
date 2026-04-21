@@ -88,7 +88,8 @@ a {
 
 .logo {
     font-size: clamp(2.8rem, 6vw, 4.7rem);
-    line-height: 0.98;
+    line-height: 1.08;
+    padding-bottom: 0.08em;
 }
 
 .tagline {
@@ -192,6 +193,8 @@ a {
 
 .page-title {
     font-size: clamp(2.2rem, 4vw, 3.2rem);
+    line-height: 1.05;
+    padding-bottom: 0.05em;
 }
 
 .code-box {
@@ -274,6 +277,139 @@ a {
 .waiting-section {
     text-align: center;
     color: var(--gc-muted);
+}
+
+.builder-shell {
+    padding: 1.35rem;
+    border: 1px solid var(--gc-border);
+    border-radius: 1.25rem;
+    background: rgba(6, 24, 28, 0.72);
+}
+
+.builder-mode-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.quiz-mode-toggle .btn.active {
+    border-color: var(--gc-primary);
+    background: rgba(30, 167, 161, 0.2);
+    color: #b8fffb;
+}
+
+.builder-summary {
+    color: var(--gc-muted);
+}
+
+.empty-builder-state {
+    padding: 1rem 1.1rem;
+    border: 1px dashed rgba(244, 239, 231, 0.2);
+    border-radius: 1rem;
+    color: var(--gc-muted);
+    text-align: center;
+}
+
+.custom-quiz-list {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.custom-quiz-card {
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--gc-border);
+    border-radius: 1rem;
+    background: rgba(4, 18, 22, 0.74);
+}
+
+.custom-quiz-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.85rem;
+}
+
+.custom-quiz-order {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 999px;
+    background: rgba(30, 167, 161, 0.18);
+    color: #9df7f2;
+    font-weight: 700;
+}
+
+.custom-quiz-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.45rem;
+}
+
+.custom-quiz-topic {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.22rem 0.65rem;
+    border-radius: 999px;
+    background: rgba(240, 180, 75, 0.14);
+    color: #f9d79a;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.custom-quiz-image-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.22rem 0.65rem;
+    border-radius: 999px;
+    background: rgba(60, 207, 145, 0.14);
+    color: #8bf7c5;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.custom-quiz-text {
+    margin-bottom: 0.75rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.custom-quiz-answers {
+    display: grid;
+    gap: 0.45rem;
+    padding-left: 1.1rem;
+    margin: 0;
+    color: var(--gc-muted);
+}
+
+.custom-quiz-answers li.correct {
+    color: #b8ffdf;
+}
+
+.custom-quiz-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+
+.custom-quiz-actions .btn {
+    padding-inline: 0.95rem;
+}
+
+.builder-form-shell {
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--gc-border);
+}
+
+.builder-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
 }
 
 .game-header {
@@ -1075,6 +1211,7 @@ a {
     animation:
         gc-logo-shimmer 7s linear infinite,
         gc-fade-up 0.65s 0.1s ease both;
+    display: inline-block;
 }
 
 /* Staggered hero text entrance */
@@ -1173,6 +1310,22 @@ a {
     .code-box {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .builder-mode-header,
+    .custom-quiz-card-head {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .builder-form-actions,
+    .custom-quiz-actions {
+        width: 100%;
+    }
+
+    .builder-form-actions .btn,
+    .custom-quiz-actions .btn {
+        width: 100%;
     }
 
     .game-header {

@@ -80,6 +80,10 @@ function ensure_group_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE sessions ADD COLUMN round_phase VARCHAR(20) NOT NULL DEFAULT 'lobby' AFTER status");
     }
 
+    if (!group_column_exists($pdo, 'sessions', 'quiz_mode')) {
+        $pdo->exec("ALTER TABLE sessions ADD COLUMN quiz_mode ENUM('built_in','custom') NOT NULL DEFAULT 'built_in' AFTER num_questions");
+    }
+
     if (!group_column_exists($pdo, 'sessions', 'phase_started_at')) {
         $pdo->exec("ALTER TABLE sessions ADD COLUMN phase_started_at DATETIME NULL AFTER question_started_at");
     }
@@ -129,12 +133,95 @@ function ensure_group_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE questions ADD COLUMN image_lookup_query VARCHAR(255) NULL AFTER image_url");
     }
 
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS session_custom_questions (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            session_id INT UNSIGNED NOT NULL,
+            position TINYINT UNSIGNED NOT NULL,
+            topic_label VARCHAR(80) NOT NULL,
+            question_text TEXT NOT NULL,
+            options JSON NOT NULL,
+            correct_index TINYINT UNSIGNED NOT NULL,
+            image_asset_path VARCHAR(255) NULL,
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            UNIQUE KEY uq_session_custom_position (session_id, position),
+            CONSTRAINT fk_scq_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB"
+    );
+
+    if (!group_column_exists($pdo, 'session_questions', 'source')) {
+        $pdo->exec("ALTER TABLE session_questions ADD COLUMN source ENUM('built_in','custom') NOT NULL DEFAULT 'built_in' AFTER question_id");
+    }
+
+    if (!group_column_exists($pdo, 'session_questions', 'custom_question_id')) {
+        $pdo->exec("ALTER TABLE session_questions ADD COLUMN custom_question_id INT UNSIGNED NULL AFTER source");
+    }
+
+    $session_question_id_column = group_column_definition($pdo, 'session_questions', 'question_id');
+    if ($session_question_id_column !== null && strtoupper((string) ($session_question_id_column['Null'] ?? 'NO')) !== 'YES') {
+        $pdo->exec("ALTER TABLE session_questions MODIFY question_id INT UNSIGNED NULL");
+    }
+
+    if (!group_index_exists($pdo, 'session_questions', 'idx_session_questions_custom_question')) {
+        $pdo->exec("ALTER TABLE session_questions ADD KEY idx_session_questions_custom_question (custom_question_id)");
+    }
+
+    if (!group_foreign_key_exists($pdo, 'session_questions', 'fk_sq_custom_question')) {
+        $pdo->exec(
+            "ALTER TABLE session_questions
+             ADD CONSTRAINT fk_sq_custom_question
+             FOREIGN KEY (custom_question_id) REFERENCES session_custom_questions(id) ON DELETE CASCADE"
+        );
+    }
+
+    $pdo->exec(
+        "UPDATE session_questions
+         SET source = CASE
+             WHEN custom_question_id IS NOT NULL THEN 'custom'
+             ELSE 'built_in'
+         END"
+    );
+
     if (!group_column_exists($pdo, 'players', 'auth_token')) {
         $pdo->exec("ALTER TABLE players ADD COLUMN auth_token CHAR(64) NULL AFTER name");
     }
 
     if (!group_column_exists($pdo, 'players', 'game_ready_at')) {
         $pdo->exec("ALTER TABLE players ADD COLUMN game_ready_at DATETIME NULL AFTER last_seen_at");
+    }
+
+    if (!group_column_exists($pdo, 'answers', 'session_question_id')) {
+        $pdo->exec("ALTER TABLE answers ADD COLUMN session_question_id INT UNSIGNED NULL AFTER question_id");
+    }
+
+    $answer_question_column = group_column_definition($pdo, 'answers', 'question_id');
+    if ($answer_question_column !== null && strtoupper((string) ($answer_question_column['Null'] ?? 'NO')) !== 'YES') {
+        $pdo->exec("ALTER TABLE answers MODIFY question_id INT UNSIGNED NULL");
+    }
+
+    $pdo->exec(
+        "UPDATE answers a
+         JOIN session_questions sq
+           ON sq.session_id = a.session_id
+          AND sq.question_id = a.question_id
+          AND sq.source = 'built_in'
+         SET a.session_question_id = sq.id
+         WHERE a.session_question_id IS NULL"
+    );
+
+    if (!group_unique_index_exists_for_columns($pdo, 'answers', ['player_id', 'session_id', 'session_question_id'])) {
+        $pdo->exec(
+            "ALTER TABLE answers
+             ADD UNIQUE KEY uq_player_session_question (player_id, session_id, session_question_id)"
+        );
+    }
+
+    if (!group_foreign_key_exists($pdo, 'answers', 'fk_ans_session_question')) {
+        $pdo->exec(
+            "ALTER TABLE answers
+             ADD CONSTRAINT fk_ans_session_question
+             FOREIGN KEY (session_question_id) REFERENCES session_questions(id) ON DELETE CASCADE"
+        );
     }
 
     $player_datetime_columns = [
@@ -296,6 +383,21 @@ function group_index_exists(PDO $pdo, string $table, string $index): bool {
     return $row !== false;
 }
 
+function group_foreign_key_exists(PDO $pdo, string $table, string $constraint): bool {
+    $stmt = $pdo->prepare(
+        "SELECT 1
+         FROM information_schema.TABLE_CONSTRAINTS
+         WHERE CONSTRAINT_SCHEMA = DATABASE()
+           AND TABLE_NAME = ?
+           AND CONSTRAINT_NAME = ?
+           AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+         LIMIT 1"
+    );
+    $stmt->execute([$table, $constraint]);
+
+    return $stmt->fetchColumn() !== false;
+}
+
 function group_unique_index_exists_for_column(PDO $pdo, string $table, string $column): bool {
     $rows = $pdo->query(
         "SHOW INDEX FROM `{$table}` WHERE Column_name = " . $pdo->quote($column)
@@ -303,6 +405,31 @@ function group_unique_index_exists_for_column(PDO $pdo, string $table, string $c
 
     foreach ($rows as $index) {
         if ((int) ($index['Non_unique'] ?? 1) === 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function group_unique_index_exists_for_columns(PDO $pdo, string $table, array $columns): bool {
+    $rows = $pdo->query("SHOW INDEX FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
+    $target = array_values($columns);
+    $grouped = [];
+
+    foreach ($rows as $row) {
+        $key_name = (string) ($row['Key_name'] ?? '');
+        if ($key_name === '' || (int) ($row['Non_unique'] ?? 1) !== 0) {
+            continue;
+        }
+
+        $seq = (int) ($row['Seq_in_index'] ?? 0);
+        $grouped[$key_name][$seq] = (string) ($row['Column_name'] ?? '');
+    }
+
+    foreach ($grouped as $parts) {
+        ksort($parts);
+        if (array_values($parts) === $target) {
             return true;
         }
     }

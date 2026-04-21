@@ -20,7 +20,10 @@ if ($session['status'] !== 'waiting') {
     json_response(['error' => 'Game has already started'], 409);
 }
 
+$quiz_mode = session_quiz_mode($session);
 $num_questions = (int) $session['num_questions'];
+$question_ids = [];
+$custom_question_ids = [];
 
 /**
  * Pick $count random question IDs at a given difficulty, excluding already-chosen IDs.
@@ -50,45 +53,62 @@ function pick_ids_at_difficulty(PDO $pdo, string $difficulty, int $count, array 
     return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
 }
 
-// Progressive difficulty tiers: 40% easy → 40% medium → 20% hard
-$hard_count   = max(1, (int) round($num_questions * 0.20));
-$medium_count = (int) round($num_questions * 0.40);
-$easy_count   = $num_questions - $hard_count - $medium_count;
+if ($quiz_mode === 'custom') {
+    $custom_stmt = $pdo->prepare(
+        'SELECT id
+         FROM session_custom_questions
+         WHERE session_id = ?
+         ORDER BY position ASC, id ASC'
+    );
+    $custom_stmt->execute([(int) $session['id']]);
+    $custom_question_ids = array_map('intval', $custom_stmt->fetchAll(PDO::FETCH_COLUMN));
 
-$easy_ids   = pick_ids_at_difficulty($pdo, 'easy',   $easy_count,   []);
-$medium_ids = pick_ids_at_difficulty($pdo, 'medium', $medium_count, $easy_ids);
-$hard_ids   = pick_ids_at_difficulty($pdo, 'hard',   $hard_count,   array_merge($easy_ids, $medium_ids));
-
-// If any tier is short, backfill from adjacent difficulties
-$all_chosen  = array_merge($easy_ids, $medium_ids, $hard_ids);
-$still_needed = $num_questions - count($all_chosen);
-
-if ($still_needed > 0) {
-    // Pull from whatever difficulty has leftovers, avoiding duplicates
-    foreach (['medium', 'easy', 'hard'] as $fallback) {
-        if ($still_needed <= 0) {
-            break;
-        }
-        $extras = pick_ids_at_difficulty($pdo, $fallback, $still_needed, $all_chosen);
-        $all_chosen    = array_merge($all_chosen, $extras);
-        $still_needed -= count($extras);
+    if (empty($custom_question_ids)) {
+        json_response(['error' => 'Add at least one custom question before starting a custom quiz.'], 409);
     }
+
+    $num_questions = count($custom_question_ids);
+} else {
+    // Progressive difficulty tiers: 40% easy → 40% medium → 20% hard
+    $hard_count   = max(1, (int) round($num_questions * 0.20));
+    $medium_count = (int) round($num_questions * 0.40);
+    $easy_count   = $num_questions - $hard_count - $medium_count;
+
+    $easy_ids   = pick_ids_at_difficulty($pdo, 'easy',   $easy_count,   []);
+    $medium_ids = pick_ids_at_difficulty($pdo, 'medium', $medium_count, $easy_ids);
+    $hard_ids   = pick_ids_at_difficulty($pdo, 'hard',   $hard_count,   array_merge($easy_ids, $medium_ids));
+
+    // If any tier is short, backfill from adjacent difficulties
+    $all_chosen  = array_merge($easy_ids, $medium_ids, $hard_ids);
+    $still_needed = $num_questions - count($all_chosen);
+
+    if ($still_needed > 0) {
+        // Pull from whatever difficulty has leftovers, avoiding duplicates
+        foreach (['medium', 'easy', 'hard'] as $fallback) {
+            if ($still_needed <= 0) {
+                break;
+            }
+            $extras = pick_ids_at_difficulty($pdo, $fallback, $still_needed, $all_chosen);
+            $all_chosen    = array_merge($all_chosen, $extras);
+            $still_needed -= count($extras);
+        }
+    }
+
+    // Shuffle within each tier so category order is random, but tiers stay ordered
+    shuffle($easy_ids);
+    shuffle($medium_ids);
+    shuffle($hard_ids);
+
+    // Final ordered list: easy → medium → hard
+    $question_ids = array_merge($easy_ids, $medium_ids, $hard_ids);
+
+    // If we still need more (extreme edge case: very small question bank), append backfill
+    if (count($question_ids) < $num_questions) {
+        $question_ids = array_merge($question_ids, array_slice($all_chosen, count($question_ids)));
+    }
+
+    $question_ids = array_slice(array_unique($question_ids), 0, $num_questions);
 }
-
-// Shuffle within each tier so category order is random, but tiers stay ordered
-shuffle($easy_ids);
-shuffle($medium_ids);
-shuffle($hard_ids);
-
-// Final ordered list: easy → medium → hard
-$question_ids = array_merge($easy_ids, $medium_ids, $hard_ids);
-
-// If we still need more (extreme edge case: very small question bank), append backfill
-if (count($question_ids) < $num_questions) {
-    $question_ids = array_merge($question_ids, array_slice($all_chosen, count($question_ids)));
-}
-
-$question_ids = array_slice(array_unique($question_ids), 0, $num_questions);
 
 $pdo->beginTransaction();
 try {
@@ -98,21 +118,37 @@ try {
          WHERE session_id = ?'
     )->execute([$session['id']]);
 
-    foreach ($question_ids as $pos => $qid) {
-        $pdo->prepare('INSERT INTO session_questions (session_id, question_id, position) VALUES (?, ?, ?)')
-            ->execute([$session['id'], $qid, $pos]);
+    $pdo->prepare('DELETE FROM session_questions WHERE session_id = ?')->execute([$session['id']]);
+
+    if ($quiz_mode === 'custom') {
+        $insert_custom = $pdo->prepare(
+            "INSERT INTO session_questions (session_id, question_id, source, custom_question_id, position)
+             VALUES (?, NULL, 'custom', ?, ?)"
+        );
+        foreach ($custom_question_ids as $pos => $custom_question_id) {
+            $insert_custom->execute([(int) $session['id'], $custom_question_id, $pos]);
+        }
+    } else {
+        $insert_built_in = $pdo->prepare(
+            "INSERT INTO session_questions (session_id, question_id, source, custom_question_id, position)
+             VALUES (?, ?, 'built_in', NULL, ?)"
+        );
+        foreach ($question_ids as $pos => $qid) {
+            $insert_built_in->execute([(int) $session['id'], $qid, $pos]);
+        }
     }
 
     $pdo->prepare(
         "UPDATE sessions
          SET status = 'in_progress',
+             num_questions = ?,
              round_phase = 'ready',
              started_at = NOW(6),
              phase_started_at = NULL,
              question_started_at = NULL,
              current_q_index = 0
          WHERE id = ?"
-    )->execute([$session['id']]);
+    )->execute([$num_questions, $session['id']]);
     bump_session_state_version($pdo, (int) $session['id']);
 
     $pdo->commit();

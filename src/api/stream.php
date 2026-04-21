@@ -65,6 +65,7 @@ function build_stream_payload(PDO $pdo, array $session, int $player_id, array $a
     $session_id = (int) $session['id'];
     $host_player_id = $session['host_player_id'] !== null ? (int) $session['host_player_id'] : 0;
     $players = fetch_session_players($pdo, $session_id, $host_player_id, $player_id);
+    $custom_question_count = count_session_custom_questions($pdo, $session_id);
     $server_now_ms = server_now_ms();
     $phase_started_at_ms = phase_started_at_ms_for_session($session);
     $phase_elapsed_ms = ($session['status'] ?? '') === 'in_progress'
@@ -75,6 +76,8 @@ function build_stream_payload(PDO $pdo, array $session, int $player_id, array $a
         'status' => $session['status'],
         'round_phase' => $session['round_phase'] ?? 'lobby',
         'state_version' => (int) ($session['state_version'] ?? 0),
+        'quiz_mode' => session_quiz_mode($session),
+        'custom_question_count' => $custom_question_count,
         'question_duration' => QUESTION_DURATION_SEC,
         'leaderboard_duration' => LEADERBOARD_PHASE_SEC,
         'ready_duration' => READY_PHASE_SEC,

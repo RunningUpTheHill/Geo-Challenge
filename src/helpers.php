@@ -315,6 +315,7 @@ function refresh_session_stream_state(PDO $pdo, int $session_id): array
         'SELECT
             id,
             host_player_id,
+            quiz_mode,
             status,
             round_phase,
             current_q_index,
@@ -340,6 +341,260 @@ function refresh_session_stream_state(PDO $pdo, int $session_id): array
     return $session;
 }
 
+function session_quiz_mode(array $session): string
+{
+    return (($session['quiz_mode'] ?? '') === 'custom') ? 'custom' : 'built_in';
+}
+
+function custom_quiz_upload_root(): string
+{
+    return rtrim(normalize_path(CUSTOM_QUIZ_UPLOAD_ROOT), '/');
+}
+
+function ensure_custom_quiz_upload_root(): string
+{
+    $root = custom_quiz_upload_root();
+    if (!is_dir($root) && !@mkdir($root, 0775, true) && !is_dir($root)) {
+        throw new RuntimeException('Could not create the custom quiz upload directory.');
+    }
+
+    return $root;
+}
+
+function custom_quiz_absolute_image_path(?string $relative_path): ?string
+{
+    $value = trim((string) $relative_path);
+    if ($value === '') {
+        return null;
+    }
+
+    return custom_quiz_upload_root() . '/' . ltrim(str_replace('\\', '/', $value), '/');
+}
+
+function delete_custom_quiz_image_file(?string $relative_path): void
+{
+    $absolute_path = custom_quiz_absolute_image_path($relative_path);
+    if ($absolute_path === null || !is_file($absolute_path)) {
+        return;
+    }
+
+    @unlink($absolute_path);
+
+    $parent_dir = dirname($absolute_path);
+    if (is_dir($parent_dir)) {
+        @rmdir($parent_dir);
+    }
+}
+
+function custom_question_image_url(int $custom_question_id, ?string $relative_path): ?string
+{
+    if ($custom_question_id <= 0 || trim((string) $relative_path) === '') {
+        return null;
+    }
+
+    $absolute_path = custom_quiz_absolute_image_path($relative_path);
+    $version = ($absolute_path !== null && is_file($absolute_path))
+        ? '&v=' . rawurlencode((string) filemtime($absolute_path))
+        : '';
+
+    return app_url('custom_question_image.php?question_id=' . urlencode((string) $custom_question_id) . $version);
+}
+
+function custom_quiz_upload_extension_for_mime(string $mime): ?string
+{
+    switch ($mime) {
+        case 'image/jpeg':
+            return 'jpg';
+        case 'image/png':
+            return 'png';
+        case 'image/webp':
+            return 'webp';
+        case 'image/gif':
+            return 'gif';
+        default:
+            return null;
+    }
+}
+
+function custom_quiz_detect_uploaded_image_mime(string $tmp_path): ?string
+{
+    $mime = null;
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo !== false) {
+            $detected = finfo_file($finfo, $tmp_path);
+            finfo_close($finfo);
+            if (is_string($detected)) {
+                $mime = $detected;
+            }
+        }
+    } elseif (function_exists('mime_content_type')) {
+        $detected = @mime_content_type($tmp_path);
+        if (is_string($detected)) {
+            $mime = $detected;
+        }
+    }
+
+    $mime = trim((string) $mime);
+    return custom_quiz_upload_extension_for_mime($mime) !== null ? $mime : null;
+}
+
+function store_custom_quiz_uploaded_image(int $session_id, array $file): string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        throw new RuntimeException('Image upload failed.');
+    }
+
+    $tmp_path = (string) ($file['tmp_name'] ?? '');
+    if ($tmp_path === '' || !is_uploaded_file($tmp_path)) {
+        throw new RuntimeException('Uploaded image could not be verified.');
+    }
+
+    $size = (int) ($file['size'] ?? 0);
+    if ($size <= 0 || $size > CUSTOM_QUIZ_IMAGE_MAX_BYTES) {
+        throw new RuntimeException('Uploaded image must be under 5 MB.');
+    }
+
+    $mime = custom_quiz_detect_uploaded_image_mime($tmp_path);
+    $extension = $mime !== null ? custom_quiz_upload_extension_for_mime($mime) : null;
+    if ($extension === null) {
+        throw new RuntimeException('Upload a JPG, PNG, GIF, or WebP image.');
+    }
+
+    $root = ensure_custom_quiz_upload_root();
+    $session_dir = $root . '/session_' . $session_id;
+    if (!is_dir($session_dir) && !@mkdir($session_dir, 0775, true) && !is_dir($session_dir)) {
+        throw new RuntimeException('Could not prepare the room image folder.');
+    }
+
+    $file_name = 'question_' . bin2hex(random_bytes(12)) . '.' . $extension;
+    $destination = $session_dir . '/' . $file_name;
+    if (!move_uploaded_file($tmp_path, $destination)) {
+        throw new RuntimeException('Could not save the uploaded image.');
+    }
+
+    return 'session_' . $session_id . '/' . $file_name;
+}
+
+function format_custom_question_editor_record(array $row): array
+{
+    $options = json_decode((string) ($row['options'] ?? '[]'), true);
+    if (!is_array($options)) {
+        $options = [];
+    }
+
+    return [
+        'id' => (int) ($row['id'] ?? 0),
+        'position' => (int) ($row['position'] ?? 0),
+        'topic_label' => trim((string) ($row['topic_label'] ?? '')),
+        'question_text' => trim((string) ($row['question_text'] ?? '')),
+        'options' => array_values($options),
+        'correct_index' => (int) ($row['correct_index'] ?? 0),
+        'image_url' => custom_question_image_url((int) ($row['id'] ?? 0), $row['image_asset_path'] ?? null),
+        'has_image' => trim((string) ($row['image_asset_path'] ?? '')) !== '',
+    ];
+}
+
+function fetch_session_custom_questions(PDO $pdo, int $session_id): array
+{
+    $stmt = $pdo->prepare(
+        'SELECT id, session_id, position, topic_label, question_text, options, correct_index, image_asset_path
+         FROM session_custom_questions
+         WHERE session_id = ?
+         ORDER BY position ASC, id ASC'
+    );
+    $stmt->execute([$session_id]);
+
+    return array_map('format_custom_question_editor_record', $stmt->fetchAll());
+}
+
+function fetch_session_custom_question_row(PDO $pdo, int $session_id, int $custom_question_id): ?array
+{
+    $stmt = $pdo->prepare(
+        'SELECT id, session_id, position, topic_label, question_text, options, correct_index, image_asset_path
+         FROM session_custom_questions
+         WHERE session_id = ? AND id = ?
+         LIMIT 1'
+    );
+    $stmt->execute([$session_id, $custom_question_id]);
+    $row = $stmt->fetch();
+
+    return $row ?: null;
+}
+
+function count_session_custom_questions(PDO $pdo, int $session_id): int
+{
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM session_custom_questions WHERE session_id = ?');
+    $stmt->execute([$session_id]);
+    return (int) $stmt->fetchColumn();
+}
+
+function resequence_session_custom_questions(PDO $pdo, int $session_id): void
+{
+    $stmt = $pdo->prepare(
+        'SELECT id
+         FROM session_custom_questions
+         WHERE session_id = ?
+         ORDER BY position ASC, id ASC'
+    );
+    $stmt->execute([$session_id]);
+    $ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+
+    if (empty($ids)) {
+        return;
+    }
+
+    $temporary = $pdo->prepare(
+        'UPDATE session_custom_questions
+         SET position = ?
+         WHERE session_id = ? AND id = ?'
+    );
+
+    foreach ($ids as $index => $id) {
+        $temporary->execute([200 + $index, $session_id, $id]);
+    }
+
+    foreach ($ids as $index => $id) {
+        $temporary->execute([$index, $session_id, $id]);
+    }
+}
+
+function custom_quiz_builder_payload(PDO $pdo, array $session): array
+{
+    $session_id = (int) ($session['id'] ?? 0);
+    $custom_questions = $session_id > 0 ? fetch_session_custom_questions($pdo, $session_id) : [];
+
+    return [
+        'quiz_mode' => session_quiz_mode($session),
+        'custom_question_count' => count($custom_questions),
+        'custom_questions' => $custom_questions,
+        'can_edit' => ($session['status'] ?? '') === 'waiting',
+        'num_questions' => (int) ($session['num_questions'] ?? 0),
+    ];
+}
+
+function require_host_session_for_builder(string $code, ?string $player_token = null, bool $require_waiting = true): array
+{
+    $normalized_code = normalize_session_code_value($code);
+    $active = require_player_auth_for_api($normalized_code, $player_token);
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+
+    $pdo = get_pdo();
+    $session = sync_session_runtime_state($pdo, get_session_by_code($normalized_code));
+
+    if ((int) ($session['host_player_id'] ?? 0) !== (int) ($active['player_id'] ?? 0)) {
+        json_response(['error' => 'Only the host can manage this room quiz.'], 403);
+    }
+
+    if ($require_waiting && ($session['status'] ?? '') !== 'waiting') {
+        json_response(['error' => 'Custom quiz editing is locked after the game starts.'], 409);
+    }
+
+    return [$pdo, $session, $active];
+}
+
 function bump_session_state_version(PDO $pdo, int $session_id): void
 {
     $stmt = $pdo->prepare(
@@ -354,10 +609,39 @@ function bump_session_state_version(PDO $pdo, int $session_id): void
 function fetch_session_question_row(PDO $pdo, int $session_id, int $position): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT q.id, q.question_text, q.image_url, q.image_lookup_query, q.category, q.difficulty, q.options, q.correct_index
+        "SELECT
+            sq.id,
+            sq.source AS question_source,
+            sq.question_id AS built_in_question_id,
+            sq.custom_question_id,
+            COALESCE(q.question_text, cq.question_text) AS question_text,
+            q.image_url,
+            q.image_lookup_query,
+            CASE
+                WHEN sq.source = 'custom' THEN cq.topic_label
+                ELSE q.category
+            END AS category,
+            CASE
+                WHEN sq.source = 'custom' THEN 'custom'
+                ELSE q.difficulty
+            END AS difficulty,
+            CASE
+                WHEN sq.source = 'custom' THEN cq.options
+                ELSE q.options
+            END AS options,
+            CASE
+                WHEN sq.source = 'custom' THEN cq.correct_index
+                ELSE q.correct_index
+            END AS correct_index,
+            cq.image_asset_path
          FROM session_questions sq
-         JOIN questions q ON q.id = sq.question_id
-         WHERE sq.session_id = ? AND sq.position = ?'
+         LEFT JOIN questions q
+           ON q.id = sq.question_id
+          AND sq.source = 'built_in'
+         LEFT JOIN session_custom_questions cq
+           ON cq.id = sq.custom_question_id
+          AND sq.source = 'custom'
+         WHERE sq.session_id = ? AND sq.position = ?"
     );
     $stmt->execute([$session_id, $position]);
     $row = $stmt->fetch();
@@ -368,19 +652,41 @@ function fetch_session_question_row(PDO $pdo, int $session_id, int $position): ?
 function fetch_session_question_plan(PDO $pdo, int $session_id): array
 {
     $stmt = $pdo->prepare(
-        'SELECT
+        "SELECT
             sq.position,
-            q.id,
-            q.question_text,
+            sq.id,
+            sq.source AS question_source,
+            sq.question_id AS built_in_question_id,
+            sq.custom_question_id,
+            COALESCE(q.question_text, cq.question_text) AS question_text,
             q.image_url,
             q.image_lookup_query,
-            q.category,
-            q.difficulty,
-            q.options
+            CASE
+                WHEN sq.source = 'custom' THEN cq.topic_label
+                ELSE q.category
+            END AS category,
+            CASE
+                WHEN sq.source = 'custom' THEN 'custom'
+                ELSE q.difficulty
+            END AS difficulty,
+            CASE
+                WHEN sq.source = 'custom' THEN cq.options
+                ELSE q.options
+            END AS options,
+            CASE
+                WHEN sq.source = 'custom' THEN cq.correct_index
+                ELSE q.correct_index
+            END AS correct_index,
+            cq.image_asset_path
          FROM session_questions sq
-         JOIN questions q ON q.id = sq.question_id
+         LEFT JOIN questions q
+           ON q.id = sq.question_id
+          AND sq.source = 'built_in'
+         LEFT JOIN session_custom_questions cq
+           ON cq.id = sq.custom_question_id
+          AND sq.source = 'custom'
          WHERE sq.session_id = ?
-         ORDER BY sq.position ASC'
+         ORDER BY sq.position ASC"
     );
     $stmt->execute([$session_id]);
 
@@ -729,6 +1035,20 @@ function question_resolved_image_payload(PDO $pdo, array $question_row): array
         return $resolved_by_question_id[$question_id];
     }
 
+    if (($question_row['question_source'] ?? '') === 'custom') {
+        $payload = [
+            'image_url' => custom_question_image_url(
+                (int) ($question_row['custom_question_id'] ?? 0),
+                $question_row['image_asset_path'] ?? null
+            ),
+            'image_alt' => question_default_image_alt($question_row),
+        ];
+        if ($question_id > 0) {
+            $resolved_by_question_id[$question_id] = $payload;
+        }
+        return $payload;
+    }
+
     if (question_is_flag_category($question_row)) {
         $payload = [
             'image_url' => question_image_url($question_row['image_url'] ?? null),
@@ -757,10 +1077,11 @@ function question_resolved_image_payload(PDO $pdo, array $question_row): array
     if ($lookup_title !== '') {
         $resolved = wikimedia_resolve_image($lookup_title);
         if ($resolved !== null) {
-            if ($question_id > 0) {
+            $built_in_question_id = (int) ($question_row['built_in_question_id'] ?? 0);
+            if ($built_in_question_id > 0) {
                 try {
                     $stmt = $pdo->prepare('UPDATE questions SET image_url = ? WHERE id = ?');
-                    $stmt->execute([$resolved['url'], $question_id]);
+                    $stmt->execute([$resolved['url'], $built_in_question_id]);
                 } catch (Throwable $e) {
                     // Keep gameplay moving even if the cache write fails.
                 }
@@ -861,22 +1182,22 @@ function fetch_session_players(PDO $pdo, int $session_id, int $host_player_id = 
     return $players;
 }
 
-function count_answers_for_question(PDO $pdo, int $session_id, int $question_id): int
+function count_answers_for_question(PDO $pdo, int $session_id, int $session_question_id): int
 {
-    $stmt = $pdo->prepare('SELECT COUNT(*) FROM answers WHERE session_id = ? AND question_id = ?');
-    $stmt->execute([$session_id, $question_id]);
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM answers WHERE session_id = ? AND session_question_id = ?');
+    $stmt->execute([$session_id, $session_question_id]);
     return (int) $stmt->fetchColumn();
 }
 
-function fetch_player_answer_row(PDO $pdo, int $session_id, int $question_id, int $player_id): ?array
+function fetch_player_answer_row(PDO $pdo, int $session_id, int $session_question_id, int $player_id): ?array
 {
     $stmt = $pdo->prepare(
         'SELECT chosen_index, is_correct, time_ms, points_awarded
          FROM answers
-         WHERE session_id = ? AND question_id = ? AND player_id = ?
+         WHERE session_id = ? AND session_question_id = ? AND player_id = ?
          LIMIT 1'
     );
-    $stmt->execute([$session_id, $question_id, $player_id]);
+    $stmt->execute([$session_id, $session_question_id, $player_id]);
     $row = $stmt->fetch();
 
     return $row ?: null;
@@ -1103,29 +1424,42 @@ function phase_elapsed_ms(PDO $pdo, int $session_id): int
     return max(0, (int) ($stmt->fetchColumn() / 1000));
 }
 
-function add_timeout_answers_for_missing_players(PDO $pdo, array $session, int $question_id): void
+function add_timeout_answers_for_missing_players(PDO $pdo, array $session, array $question_row): void
 {
+    $session_question_id = (int) ($question_row['id'] ?? 0);
+    if ($session_question_id <= 0) {
+        return;
+    }
+
+    $built_in_question_id = (int) ($question_row['built_in_question_id'] ?? 0);
     $stmt = $pdo->prepare(
         'SELECT p.id
          FROM players p
          LEFT JOIN answers a
            ON a.player_id = p.id
           AND a.session_id = p.session_id
-          AND a.question_id = ?
+          AND a.session_question_id = ?
          WHERE p.session_id = ?
            AND a.id IS NULL'
     );
-    $stmt->execute([$question_id, $session['id']]);
+    $stmt->execute([$session_question_id, $session['id']]);
 
     $insert = $pdo->prepare(
-        'INSERT IGNORE INTO answers (player_id, session_id, question_id, chosen_index, is_correct, time_ms, points_awarded)
-         VALUES (?, ?, ?, ?, 0, ?, 0)'
+        'INSERT IGNORE INTO answers (player_id, session_id, question_id, session_question_id, chosen_index, is_correct, time_ms, points_awarded)
+         VALUES (?, ?, ?, ?, ?, 0, ?, 0)'
     );
     $update = $pdo->prepare('UPDATE players SET total_time_ms = total_time_ms + ? WHERE id = ?');
     $timeout_ms = QUESTION_DURATION_SEC * 1000;
 
     foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $player_id) {
-        $insert->execute([(int) $player_id, (int) $session['id'], $question_id, 255, $timeout_ms]);
+        $insert->execute([
+            (int) $player_id,
+            (int) $session['id'],
+            $built_in_question_id > 0 ? $built_in_question_id : null,
+            $session_question_id,
+            255,
+            $timeout_ms,
+        ]);
         $update->execute([$timeout_ms, (int) $player_id]);
     }
 }
@@ -1188,7 +1522,7 @@ function set_session_leaderboard_phase(PDO $pdo, array $session): void
         ]);
 
         if ($stmt->rowCount() > 0) {
-            add_timeout_answers_for_missing_players($pdo, $session, (int) $question['id']);
+            add_timeout_answers_for_missing_players($pdo, $session, $question);
             bump_session_state_version($pdo, (int) $session['id']);
         }
 
@@ -1203,6 +1537,24 @@ function set_session_leaderboard_phase(PDO $pdo, array $session): void
 
 function finish_session(PDO $pdo, int $session_id): void
 {
+    $image_stmt = $pdo->prepare(
+        'SELECT image_asset_path
+         FROM session_custom_questions
+         WHERE session_id = ?
+           AND image_asset_path IS NOT NULL
+           AND image_asset_path <> \'\''
+    );
+    $image_stmt->execute([$session_id]);
+    foreach ($image_stmt->fetchAll(PDO::FETCH_COLUMN) as $image_path) {
+        delete_custom_quiz_image_file((string) $image_path);
+    }
+
+    $pdo->prepare(
+        'UPDATE session_custom_questions
+         SET image_asset_path = NULL
+         WHERE session_id = ?'
+    )->execute([$session_id]);
+
     $stmt = $pdo->prepare(
         "UPDATE sessions
          SET status = 'finished',

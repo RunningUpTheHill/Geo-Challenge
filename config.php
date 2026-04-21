@@ -11,6 +11,8 @@ define('MIN_POINTS_FOR_CORRECT', 500);
 define('WIKIMEDIA_API_BASE_URL', 'https://en.wikipedia.org/api/rest_v1');
 define('WIKIMEDIA_API_USER_AGENT', 'GeoChallengeImageResolver/1.0 (https://github.com/RunningUpTheHill/Geo-Challenge)');
 define('WIKIMEDIA_API_TIMEOUT_SEC', 2);
+define('CUSTOM_QUIZ_UPLOAD_ROOT', dirname(dirname(__DIR__)) . '/geo_challenge_runtime/custom_quiz_uploads');
+define('CUSTOM_QUIZ_IMAGE_MAX_BYTES', 5 * 1024 * 1024);
 
 define('ADMIN_USER', 'admin');
 define('ADMIN_PASS', 'geochallenge');

@@ -647,13 +647,13 @@ function renderWaitingState(isTimeout = false) {
 function buildRoundSummaryMarkup(summary) {
     if (!summary || isMissingRoundResult(summary)) {
         const correctAnswerLine = summary && summary.correctAnswerText
-            ? `<div>Correct answer: <strong>${formatAnswerLabel(summary.correctAnswerText)}</strong></div>`
+            ? `<div>Correct answer: <strong class="fb-correct">${formatAnswerLabel(summary.correctAnswerText)}</strong></div>`
             : '';
 
         return `
             <div class="round-summary">
-                <strong>No answer submitted.</strong>
-                <div class="mt-2">Your answer: <strong>No answer</strong></div>
+                <strong class="fb-wrong">No answer submitted.</strong>
+                <div class="mt-2">Your answer: <strong class="fb-wrong">No answer</strong></div>
                 ${correctAnswerLine}
             </div>
         `;
@@ -668,15 +668,17 @@ function buildRoundSummaryMarkup(summary) {
         ? ` You earned ${summary.pointsAwarded} points in ${formatTime(summary.timeMs)}.`
         : summary.isTimeout && summary.timeMs
             ? ` The round timed out at ${formatTime(summary.timeMs)}.`
-            : summary.timeMs
+        : summary.timeMs
                 ? ` Response time: ${formatTime(summary.timeMs)}.`
                 : '';
+    const resultClass = summary.isCorrect ? 'fb-correct' : 'fb-wrong';
+    const chosenAnswerClass = summary.isCorrect ? 'fb-correct' : 'fb-wrong';
 
     return `
         <div class="round-summary">
-            <strong>${resultLabel}</strong>${pointsLine}
-            <div class="mt-2">Your answer: <strong>${formatAnswerLabel(summary.chosenText)}</strong></div>
-            <div>Correct answer: <strong>${formatAnswerLabel(summary.correctAnswerText)}</strong></div>
+            <strong class="${resultClass}">${resultLabel}</strong>${pointsLine}
+            <div class="mt-2">Your answer: <strong class="${chosenAnswerClass}">${formatAnswerLabel(summary.chosenText)}</strong></div>
+            <div>Correct answer: <strong class="fb-correct">${formatAnswerLabel(summary.correctAnswerText)}</strong></div>
         </div>
     `;
 }
