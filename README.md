@@ -1,5 +1,7 @@
 # Geo Challenge
 
+Link:https://cise.ufl.edu/~tianzhong.j/cis4930/group/https://cise.ufl.edu/~tianzhong.j/cis4930/group/
+
 A multiplayer geography trivia platform built with PHP, MySQL, JavaScript, Bootstrap, and jQuery.
 
 ## Setup
