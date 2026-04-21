@@ -1,5 +1,7 @@
 # Geo Challenge
 
+Link: https://cise.ufl.edu/~tianzhong.j/cis4930/group/
+
 Geo Challenge is a multiplayer geography trivia web app deployed on the CISE LAMP stack. Players create or join a room with a 6-character code, wait in a live lobby, sync into a shared ready countdown, answer timed multiple-choice questions with images, see a round leaderboard after each question, and finish on a final results page with a podium and ranked standings. Scoring rewards both correctness and speed, with total response time used as a tiebreaker.
 
 ## Live Hosting
